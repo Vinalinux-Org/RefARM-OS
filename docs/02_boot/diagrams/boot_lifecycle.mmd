@@ -1,0 +1,17 @@
+flowchart TD
+    A[Power On / Reset] --> B[Boot ROM]
+    B --> C[SPL / MLO]
+    C --> D[U-Boot]
+    D --> E[Kernel Entry]
+    E --> F[Kernel Initialization]
+    F --> G[OS Running]
+
+    B:::vendor
+    C:::boot
+    D:::boot
+    E:::kernel
+    F:::kernel
+
+    classDef vendor fill:#f9f,stroke:#333,stroke-width:1px;
+    classDef boot fill:#bbf,stroke:#333,stroke-width:1px;
+    classDef kernel fill:#bfb,stroke:#333,stroke-width:1px;

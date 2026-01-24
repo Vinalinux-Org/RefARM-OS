@@ -1,0 +1,51 @@
+%% ============================================================
+%% Boot to Kernel Sequence (Execution Timeline)
+%% ------------------------------------------------------------
+%% Scope:
+%%   From power-on reset to kernel_main() execution.
+%%
+%% Notes:
+%% - MLO / U-Boot are vendor-provided (temporary)
+%% - Kernel boot starts at entry _start
+%% ============================================================
+
+sequenceDiagram
+    autonumber
+    
+    %% --- GROUP 1: PRE-BOOT ENVIRONMENT ---
+    box rgb(240, 240, 240) "Hardware & Vendor Bootloader"
+        participant HW as Power / Reset
+        participant ROM as Boot ROM
+        participant MLO as SPL (MLO)<br/>(SRAM)
+        participant UBOOT as U-Boot<br/>(DDR)
+    end
+
+    %% --- GROUP 2: YOUR OS KERNEL ---
+    box rgb(225, 245, 254) "Your Kernel Project"
+        participant KASM as Kernel ASM<br/>(start.S / entry.S)
+        participant KC as Kernel C<br/>(kernel_main)
+    end
+
+    %% --- SEQUENCE FLOW ---
+    HW->>ROM: Power On / Reset Asserted
+    ROM->>ROM: Execute On-chip Code<br/>(Find bootable device)
+    ROM->>MLO: Load MLO to SRAM (0x402F0400)<br/>& Jump
+
+    MLO->>MLO: Init PLL (Clock), DDR3 RAM
+    MLO->>UBOOT: Load U-Boot to DDR (0x80800000)<br/>& Jump
+
+    UBOOT->>UBOOT: Full HW Init, Console Ready
+    UBOOT->>UBOOT: fatload kernel.bin 0x80000000
+    
+    %% Handoff quan trọng
+    UBOOT->>KASM: go 0x80000000
+    Note over UBOOT,KASM: HANDOFF STATE:<br/>r0=0, r1=MACH_TYPE, r2=ATAGS<br/>Mode: SVC32, MMU: OFF, Cache: OFF
+
+    KASM->>KASM: _start: Mask IRQ/FIQ
+    KASM->>KASM: Stack Setup (SP_SVC, SP_IRQ)
+    KASM->>KASM: Clear BSS Section
+
+    KASM->>KC: BL kernel_main
+    
+    Note right of KC: Entering C Environment<br/>(Never Return)
+    KC->>KC: UART_Init()<br/>printk("Hello World")
