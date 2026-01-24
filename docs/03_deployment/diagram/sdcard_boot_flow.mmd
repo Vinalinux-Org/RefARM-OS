@@ -1,0 +1,74 @@
+sequenceDiagram
+    autonumber
+
+%% ============================================================
+%% SD Card Boot Sequence (with Load Addresses)
+%% ------------------------------------------------------------
+%% Scope:
+%%    Describe how boot images are loaded from SD card
+%%    into system memory before kernel execution.
+%% Notes:
+%% - MLO and U-Boot are vendor-provided (temporary)
+%% - Addresses shown are typical for AM335x / BBB deployment
+%% - This diagram describes deployment behavior, not OS design
+%% ============================================================
+
+    %% --- SYSTEM MEMORY DOMAIN ---
+    box "AM335x System Memory" #f9f9f9
+        participant ROM as Boot ROM<br/>(Silicon)
+        participant SRAM as On-chip SRAM<br/>(64 KB)
+        participant DDR as External DDR RAM
+    end
+
+    %% --- STORAGE DOMAIN ---
+    participant SD as SD Card<br/>(FAT32)
+
+    %% =========================================================
+    %% Stage 1: Boot ROM
+    %% =========================================================
+    Note over ROM: Power-on Reset
+    ROM->>SD: Scan boot sectors to locate<br/>first-stage bootloader (MLO)
+    activate SD
+    SD-->>SRAM: Load MLO into SRAM<br/>(0x402F0400)
+    deactivate SD
+
+    %% =========================================================
+    %% Stage 2: SPL / MLO (Vendor)
+    %% =========================================================
+    Note over SRAM: SPL / MLO Execution<br/>(Vendor - Temporary)
+    SRAM->>SRAM: Early hardware init<br/>(clock, basic setup)
+    SRAM->>DDR: Initialize DDR controller
+
+    SRAM->>SD: Load next boot stage image
+    activate SD
+    SD-->>DDR: Load U-Boot image<br/>(e.g. 0x8080_0000)
+    deactivate SD
+
+    %% =========================================================
+    %% Stage 3: U-Boot (Vendor)
+    %% =========================================================
+    Note over DDR: U-Boot Execution<br/>(Vendor - Temporary)
+
+    DDR->>SD: (Optional) Read uEnv.txt
+    activate SD
+    SD-->>DDR: Environment variables
+    deactivate SD
+
+    Note over DDR: uEnv.txt handling is vendor-specific
+
+    DDR->>SD: Load kernel image (kernel.bin)
+    activate SD
+    SD-->>DDR: Place kernel at load address<br/>(0x8000_0000)
+    deactivate SD
+
+    %% =========================================================
+    %% Stage 4: Control Handoff
+    %% =========================================================
+    Note over DDR: Control Transfer to Kernel
+    DDR->>DDR: Execute go 0x8000_0000
+
+    %% QUAN TRỌNG: Note phải viết trên 1 dòng
+    Note left of DDR: CPU state at handoff:<br/>- SVC mode<br/>- MMU OFF<br/>- Cache OFF
+
+    DDR->>DDR: Jump to kernel entry _start
+    Note over DDR: Kernel execution begins
