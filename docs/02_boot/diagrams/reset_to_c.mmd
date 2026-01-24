@@ -1,0 +1,60 @@
+flowchart TD
+    %% ============================================================
+    %% Reset to C Entry Flow
+    %% ------------------------------------------------------------
+    %% Scope:
+    %%   OS-owned boot path from kernel entry (_start)
+    %%   to kernel_main() in C.
+    %%
+    %% Notes:
+    %% - MMU OFF
+    %% - IRQ/FIQ masked
+    %% - No scheduler, no interrupts
+    %% ============================================================
+
+    %% --- STYLING ---
+    classDef default font-family:Consolas,Monaco,monospace;
+    classDef asm fill:#e7f5ff,stroke:#0d6efd,stroke-width:2px;
+    classDef ccode fill:#d1e7dd,stroke:#198754,stroke-width:2px;
+    classDef critical fill:#fff3cd,stroke:#ffc107,stroke-width:3px;
+    classDef dead fill:#ced4da,stroke:#495057,stroke-width:2px,stroke-dasharray: 5 5;
+
+    %% --- ASSEMBLY DOMAIN ---
+    subgraph ASM_DOMAIN ["Assembly Domain"]
+        direction TB
+        
+        %% File: reset.S
+        START("<b>_start (Kernel Entry)</b><br/>Input: SVC Mode<br/>____________________<br/>- Mask IRQ/FIQ<br/><br/><i>[File: reset.S]</i>")
+
+        %% File: entry.S
+        STACK("<b>Stack Setup</b><br/>____________________<br/>- Set SVC Stack Pointer<br/>- Set IRQ Stack Pointer<br/><br/><i>[File: entry.S]</i>")
+
+        %% File: entry.S
+        BSS("<b>BSS Clearing</b><br/>____________________<br/>- Zero out .bss section<br/><br/><i>[File: entry.S]</i>")
+    end
+
+    %% --- C DOMAIN ---
+    subgraph C_DOMAIN ["C Domain"]
+        direction TB
+        %% File: main.c
+        KMAIN("<b>kernel_main()</b><br/>____________________<br/>- Early kernel execution<br/><br/><i>[File: main.c]</i>")
+    end
+
+    %% --- DEAD LOOP ---
+    HANG("<b>Dead Loop</b><br/><code>b .</code>")
+
+    %% --- CONNECTIONS ---
+    START ==> STACK
+    STACK ==> BSS
+    
+    BSS == "Branch & Link (BL)" ==> KMAIN
+
+    %% Safety return
+    KMAIN -.->|Returns| HANG
+    HANG --> HANG
+
+    %% --- APPLY CLASSES ---
+    class START,STACK,BSS asm;
+    class BSS critical;
+    class KMAIN ccode;
+    class HANG dead;
