@@ -1,0 +1,61 @@
+flowchart LR
+    %% =========================================================
+    %% Memory Overview - AM335x
+    %% ---------------------------------------------------------
+    %% High-level physical memory view.
+    %% Conceptual diagram, not to scale.
+    %% =========================================================
+
+    %% --- GLOBAL STYLING ---
+    classDef default font-family:Consolas,Monaco,monospace;
+    
+    classDef container fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5;
+    classDef rom fill:#e2e3e5,stroke:#383d41,stroke-width:2px;
+    classDef sram fill:#d4edda,stroke:#155724,stroke-width:2px;
+    classDef ddr fill:#c3e6cb,stroke:#155724,stroke-width:2px;
+    classDef periph fill:#fff3cd,stroke:#856404,stroke-width:2px;
+    classDef note fill:#fff,stroke:#adb5bd,stroke-dasharray: 2 2,font-style:italic;
+
+    %% --- SOC CONTAINER ---
+    subgraph SOC [" <b>AM335x SoC (Internal)</b> "]
+        direction TB
+
+        %% Boot ROM
+        ROM("<b>Boot ROM</b><br/>0x4000_0000<br/>(128 KB)<br/>__________<br/>- Hardwired code<br/>- Loads MLO to SRAM")
+
+        %% Peripherals
+        PERIPH("<b>Peripherals (MMIO)</b><br/>0x44E0_0000<br/>...<br/>0x48xx_xxxx<br/>__________<br/>- UART0, Timer, WDT<br/>- Int. Controller (INTC)<br/>- GPIO Modules")
+
+        %% SRAM
+        SRAM("<b>OCMC SRAM (64 KB)</b><br/>Base: 0x402F_0000<br/>User: <b>0x402F_0400</b><br/>__________<br/>- First 1KB: Reserved<br/>- Runs MLO/SPL")
+    end
+
+    %% --- BOARD CONTAINER ---
+    subgraph BOARD [" <b>BeagleBone Black (External)</b> "]
+        direction TB
+
+        %% DDR
+        DDR("<b>DDR3 RAM (512 MB)</b><br/>Start: 0x8000_0000<br/>End:   0x9FFF_FFFF<br/>__________<br/>- <b>OS Kernel (You are here)</b><br/>- Full Runtime Memory")
+
+        NOTE_ENTRY[/"<i>OS kernel begins execution here. Entry Point: _start symbol.</i>"/]
+    end
+
+    %% --- CONNECTIONS ---
+
+    %% 1. Boot Sequence
+    ROM ==>|1. Load MLO| SRAM
+    SRAM ==>|2. Init DRAM &<br/>Load OS| DDR
+
+    %% 2. Access Logic (Nét đứt)
+    DDR -.->|Read/Write Registers| PERIPH
+
+    %% 3. Note
+    DDR --- NOTE_ENTRY
+
+    %% --- APPLY CLASSES ---
+    class SOC,BOARD container;
+    class ROM rom;
+    class SRAM sram;
+    class DDR ddr;
+    class PERIPH periph;
+    class NOTE_ENTRY note;
