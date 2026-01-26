@@ -69,6 +69,7 @@ reset_handler:
      */
     ldr     r0, =_vector_start
     mcr     p15, 0, r0, c12, c0, 0   /* Write VBAR */
+    isb                              /* Instruction barrier */
 
     /* --------------------------------------------------------
      * Jump to entry.S for further initialization

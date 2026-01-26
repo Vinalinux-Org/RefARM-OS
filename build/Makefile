@@ -1,6 +1,6 @@
 # RefARM-OS Makefile
 
-CROSS_COMPILE = arm-linux-gnueabihf-
+CROSS_COMPILE = arm-none-eabi-
 CC = $(CROSS_COMPILE)gcc
 AS = $(CROSS_COMPILE)as
 LD = $(CROSS_COMPILE)ld
@@ -22,10 +22,14 @@ OBJS = $(ASM_OBJ) $(C_OBJ)
 # Flags
 CFLAGS = -Wall -nostdlib -nostartfiles -ffreestanding \
          -march=armv7-a -mtune=cortex-a8 \
-         -mfpu=neon -mfloat-abi=hard \
+         -mfloat-abi=soft \
+         -mno-unaligned-access \
+         -fno-builtin \
+         -fno-stack-protector \
+         -I$(SRC)/include \
          -O2 -g
-ASFLAGS = -march=armv7-a -mfpu=neon -mfloat-abi=hard
-LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib
+ASFLAGS = -march=armv7-a -mfloat-abi=soft
+LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib -Map=kernel.map
 
 # Targets
 all: kernel.bin
@@ -48,13 +52,16 @@ main.o: $(SRC)/kernel/main.c
 
 kernel.elf: $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
+	@echo "=== Kernel sections ==="
+	@$(CROSS_COMPILE)size $@
 
 kernel.bin: kernel.elf
 	$(OBJCOPY) -O binary $< $@
 	@echo ""
-	@echo "Build complete: kernel.bin ($(ls -lh kernel.bin | awk '{print $5}'))"
+	@echo "Build complete: kernel.bin"
+	@ls -lh kernel.bin
 
 clean:
-	rm -f *.o *.elf *.bin uImage
+	rm -f *.o *.elf *.bin *.map uImage
 
 .PHONY: all clean

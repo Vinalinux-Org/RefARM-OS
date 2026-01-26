@@ -1,0 +1,35 @@
+# Build outputs
+build/*.o
+build/*.elf
+build/*.bin
+build/*.map
+build/*.lst
+build/uImage
+
+# Temp files
+*.swp
+*.swo
+*~
+.*.swp
+
+# Downloaded files
+*.xz
+*.tar.gz
+*.zip
+
+# Editor configs
+.vscode/
+.idea/
+*.code-workspace
+
+# OS generated
+.DS_Store
+Thumbs.db
+*.bak
+
+# Logs
+*.log
+
+# Temporary directories
+/tmp/
+temp/
