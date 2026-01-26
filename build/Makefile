@@ -16,7 +16,7 @@ C_SRC = $(SRC)/kernel/main.c
 
 # Objects
 ASM_OBJ = reset.o entry.o
-C_OBJ = main.o
+C_OBJ = main.o uart.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -29,7 +29,7 @@ CFLAGS = -Wall -nostdlib -nostartfiles -ffreestanding \
          -I$(SRC)/include \
          -O2 -g
 ASFLAGS = -march=armv7-a -mfloat-abi=soft
-LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib -Map=kernel.map
+LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib -Wl,-Map=kernel.map
 
 # Targets
 all: kernel.bin
@@ -50,8 +50,12 @@ entry.o: $(SRC)/arch/arm/boot/entry.S
 main.o: $(SRC)/kernel/main.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+uart.o: $(SRC)/drivers/uart.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+
 kernel.elf: $(OBJS)
-	$(LD) $(LDFLAGS) -o $@ $^
+	$(CC) $(LDFLAGS) -o $@ $^ -lgcc
 	@echo "=== Kernel sections ==="
 	@$(CROSS_COMPILE)size $@
 
