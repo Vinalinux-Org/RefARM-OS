@@ -32,22 +32,31 @@ Tại thời điểm này, **mọi trạng thái cần thiết phải được t
 
 ## 3. Phân tách các thành phần boot
 
-Boot được chia thành ba phần rõ ràng, mỗi phần tương ứng với một file riêng biệt:
+Boot được chia thành hai file assembly chính, mỗi phần có vai trò kiến trúc rõ ràng:
 
-1. `reset.S`  
-   Xử lý sự kiện reset của CPU.
+1. **reset.S**  
+   - Vector table (section `.vectors`)
+   - Reset handler
+   - CPU hygiene: mask IRQ/FIQ, ensure SVC mode
+   - Stack setup (SVC mode)
+   - VBAR setup (point to vector table)
 
-2. `vector_table.S`  
-   Định nghĩa bảng vector exception.
-
-3. `entry.S`  
-   Chuẩn bị môi trường để chuyển sang C code.
+2. **entry.S**  
+   - IRQ stack setup
+   - BSS clear
+   - Jump to kernel_main()
 
 Việc phân tách này nhằm:
 
-- Làm rõ vai trò kiến trúc của từng giai đoạn.
-- Tránh gộp logic không liên quan vào cùng một file.
-- Giữ boot code đơn giản, dễ đọc và dễ kiểm soát.
+- Tách rõ CPU initialization (reset.S) vs C runtime preparation (entry.S)
+- Vector table đặt cùng reset handler vì đều nằm trong boot critical code
+- Giữ boot code đơn giản, dễ trace và dễ kiểm soát
+- Phản ánh đúng ARM exception model mà không tách quá nhỏ
+
+**Lưu ý về thiết kế:**
+- Vector table KHÔNG tách file riêng (không có vector_table.S)
+- Reset handler và vectors cùng section `.vectors` để linker place đúng thứ tự
+- Exception handlers hiện tại là stubs (infinite loops) - sẽ implement đầy đủ sau
 
 ---
 
@@ -63,26 +72,27 @@ Việc phân tách này nhằm:
           |
           v
 +---------------------+
-|       reset.S       |
+|      reset.S        |
 |---------------------|
+| Vector table:       |
+| - reset handler     |
+| - undef handler     |
+| - svc handler       |
+| - other vectors     |
+|                     |
+| Reset handler:      |
 | - mask IRQ/FIQ      |
 | - ensure SVC mode   |
 | - setup SVC stack   |
-| - set vector base   |
-+---------------------+
-          |
-          v
-+---------------------+
-|   vector_table.S    |
-|---------------------|
-| - exception vectors |
+| - set VBAR          |
+| - ISB barrier       |
 +---------------------+
           |
           v
 +---------------------+
 |       entry.S       |
 |---------------------|
-| - setup stacks      |
+| - setup IRQ stack   |
 | - clear .bss        |
 | - call kernel_main  |
 +---------------------+
@@ -97,49 +107,46 @@ Việc phân tách này nhằm:
 
 ### 5.1. `reset.S`
 
-`reset.S` là đoạn code **đầu tiên** được thực thi khi CPU reset.
+`reset.S` chứa cả vector table và reset handler - đây là code **đầu tiên** được thực thi khi CPU reset.
 
-Nhiệm vụ của `reset.S`:
+**Cấu trúc file:**
+
+1. **Vector table (section `.vectors`)**
+   - Đặt tại entry point của kernel (0x80000000)
+   - 8 vectors theo ARM exception model
+   - Reset vector branch đến reset_handler
+   - Các vectors khác hiện tại là stubs (infinite loops)
+
+2. **Reset handler (section `.text.reset`)**
+   - Xử lý CPU initialization
+   - Chuẩn bị môi trường cho entry.S
+
+**Nhiệm vụ của reset handler:**
 
 1. Mask toàn bộ IRQ và FIQ để tránh interrupt ngoài ý muốn.
-2. Đảm bảo CPU đang ở SVC mode.
+2. Đảm bảo CPU đang ở SVC mode (defensive programming).
 3. Thiết lập stack pointer ban đầu cho SVC mode.
-4. Thiết lập địa chỉ vector table (low hoặc high vector theo thiết kế).
-5. Chuyển điều khiển sang `entry.S`.
+4. Thiết lập VBAR (Vector Base Address Register) trỏ đến vector table.
+5. Thực thi ISB (Instruction Synchronization Barrier) sau VBAR write.
+6. Chuyển điều khiển sang `entry.S`.
 
-Các công việc **không** được thực hiện trong `reset.S`:
+**Các công việc KHÔNG được thực hiện trong reset.S:**
 
-- Clear `.bss`.
-- Gọi C code.
+- Clear `.bss` (thuộc entry.S).
+- Gọi C code (chưa có runtime environment).
 - Khởi tạo thiết bị (UART, timer, v.v.).
+- Setup IRQ stack (thuộc entry.S).
+
+**Lý do thiết kế:**
+
+- Vector table và reset handler cùng file vì boot-critical
+- Section `.vectors` được linker place đầu tiên
+- Reset handler ngay sau vectors để code locality tốt
+- Tách rõ CPU state setup (reset.S) vs C prep (entry.S)
 
 ---
 
-### 5.2. `vector_table.S`
-
-`vector_table.S` chỉ chứa bảng vector exception của CPU.
-
-Đặc điểm:
-
-- Mỗi vector chỉ thực hiện `branch` đến handler tương ứng.
-- Không chứa logic xử lý exception.
-- Được đặt tại địa chỉ phù hợp với cấu hình vector base.
-
-Các vector tối thiểu bao gồm:
-
-1. Reset
-2. Undefined instruction
-3. SVC
-4. Prefetch abort
-5. Data abort
-6. IRQ
-7. FIQ
-
-Mục tiêu của file này là **phản ánh đúng mô hình exception của ARM**, không xử lý logic tại đây.
-
----
-
-### 5.3. `entry.S`
+### 5.2. `entry.S`
 
 `entry.S` đóng vai trò cầu nối giữa assembly và C code.
 
