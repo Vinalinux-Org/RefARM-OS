@@ -87,13 +87,31 @@ cho đến khi kernel có mô hình interrupt rõ ràng.
 
 ### 4.3. Thiết lập vector base (VBAR)
 
-4.3.1. Vector table của kernel nằm trong kernel image (trong DDR).
+4.3.1. Vector table của kernel nằm trong kernel image (trong DDR),
+       được định nghĩa trong section `.vectors` của reset.S.
 
-4.3.2. `reset.S` thiết lập thanh ghi VBAR trỏ đến địa chỉ vector table của kernel.
+4.3.2. Reset handler thiết lập thanh ghi VBAR (Vector Base Address Register)
+       trỏ đến địa chỉ `_vector_start` (symbol từ linker).
 
-4.3.3. Trong giai đoạn boot tối thiểu:
-- Vector table có thể là stub hoặc handler tối thiểu
-- Kernel chưa enable interrupt, nên vector table chủ yếu phục vụ tính “đúng kiến trúc”
+4.3.3. **Instruction Synchronization Barrier (ISB):**
+       
+       Sau khi write vào VBAR (CP15 coprocessor register), phải thực thi
+       ISB instruction để đảm bảo write operation hoàn tất.
+
+       Code sequence trong reset.S:
+       ```asm
+       ldr r0, =_vector_start
+       mcr p15, 0, r0, c12, c0, 0   # Write VBAR
+       isb                          # Instruction barrier  
+       b   entry
+       ```
+
+       ISB là best practice cho tất cả CP15 coprocessor writes.
+
+4.3.4. Trong giai đoạn boot tối thiểu:
+- Vector table chủ yếu là stub handlers (infinite loops)
+- IRQ/FIQ vẫn masked, nên vectors chưa được invoke thực tế
+- Việc setup VBAR sớm phục vụ tính "đúng kiến trúc"
 
 ---
 
