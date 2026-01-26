@@ -7,6 +7,7 @@
  */
 
 #include "uart.h"
+#include "mmio.h"
 
 /* ============================================================
  * Hardware definitions
@@ -14,24 +15,12 @@
  */
 #define UART0_BASE      0x44E09000
 
-/* UART registers */
+/* UART registers (offsets from UART0_BASE) */
 #define UART_THR        0x00    /* Transmit Holding Register */
 #define UART_LSR        0x14    /* Line Status Register */
+
+/* Line Status Register bits */
 #define UART_LSR_THRE   (1 << 5) /* Transmit Holding Register Empty */
-
-/* ============================================================
- * Low-level MMIO
- * ============================================================
- */
-static inline void mmio_write(uint32_t addr, uint32_t val)
-{
-    *(volatile uint32_t *)addr = val;
-}
-
-static inline uint32_t mmio_read(uint32_t addr)
-{
-    return *(volatile uint32_t *)addr;
-}
 
 /* ============================================================
  * Basic UART operations
@@ -42,27 +31,27 @@ void uart_init(void)
 {
     /* Placeholder: bootloader already configured UART
      * Future: add full UART initialization here
-     * - Set baud rate
-     * - Configure frame format
-     * - Enable FIFOs
+     * - Set baud rate (via DLL/DLH registers)
+     * - Configure frame format (LCR register)
+     * - Enable FIFOs (FCR register)
+     * - Configure interrupts (IER register)
      */
 }
 
 void uart_putc(char c)
 {
     /* Wait for TX FIFO to be ready */
-    while (!(mmio_read(UART0_BASE + UART_LSR) & UART_LSR_THRE))
-        ;
+    while (!(mmio_read32(UART0_BASE + UART_LSR) & UART_LSR_THRE));
     
-    /* Write character */
-    mmio_write(UART0_BASE + UART_THR, c);
+    /* Write character to transmit holding register */
+    mmio_write32(UART0_BASE + UART_THR, c);
 }
 
 void uart_puts(const char *s)
 {
     while (*s) {
         if (*s == '\n')
-            uart_putc('\r');  /* LF -> CRLF */
+            uart_putc('\r');  /* LF -> CRLF conversion */
         uart_putc(*s++);
     }
 }

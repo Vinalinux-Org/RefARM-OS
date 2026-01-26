@@ -6,125 +6,65 @@
  * ============================================================
  */
 
-#include <stdint.h>
 #include "uart.h"
+#include "watchdog.h"
 
-/* ============================================================
- * Hardware definitions
- * ============================================================
- */
-#define WDT1_BASE       0x44E35000
-#define CM_WKUP_BASE    0x44E00400
-
-#define WDT_WSPR        0x48
-#define WDT_WWPS        0x34
-#define CM_WKUP_WDT1_CLKCTRL   0xD0
-
-/* ============================================================
- * MMIO helpers
- * ============================================================
- */
-static inline void writel(uint32_t val, uint32_t addr)
-{
-    *(volatile uint32_t *)addr = val;
-}
-
-static inline uint32_t readl(uint32_t addr)
-{
-    return *(volatile uint32_t *)addr;
-}
-
-/* ============================================================
- * Watchdog disable
- * ============================================================
- */
-static void disable_watchdog(void)
-{
-    writel(0x2, CM_WKUP_BASE + CM_WKUP_WDT1_CLKCTRL);
-    while ((readl(CM_WKUP_BASE + CM_WKUP_WDT1_CLKCTRL) & 0x3) != 0x2);
-
-    writel(0xAAAA, WDT1_BASE + WDT_WSPR);
-    while (readl(WDT1_BASE + WDT_WWPS));
-
-    writel(0x5555, WDT1_BASE + WDT_WSPR);
-    while (readl(WDT1_BASE + WDT_WWPS));
-}
-
-/* ============================================================
- * Test functions for uart_printf
- * ============================================================
- */
-
-static void test_printf_basic(void)
-{
-    uart_printf("\n=== Basic printf tests ===\n");
-    uart_printf("String: %s\n", "Hello, World!");
-    uart_printf("Character: %c\n", 'A');
-    uart_printf("Literal: %%\n");
-}
-
-static void test_printf_integers(void)
-{
-    uart_printf("\n=== Integer tests ===\n");
-    uart_printf("Decimal: %d\n", 42);
-    uart_printf("Negative: %d\n", -123);
-    uart_printf("Unsigned: %u\n", 4294967295U);
-    uart_printf("Zero: %d\n", 0);
-}
-
-static void test_printf_hex(void)
-{
-    uart_printf("\n=== Hexadecimal tests ===\n");
-    uart_printf("Hex (plain): 0x%x\n", 0xDEADBEEF);
-    uart_printf("Hex (upper): 0x%X\n", 0xDEADBEEF);
-    uart_printf("Hex (padded): 0x%08x\n", 0x42);
-    uart_printf("Address: 0x%08x\n", 0x80000000);
-}
-
-static void test_printf_mixed(void)
-{
-    uart_printf("\n=== Mixed format tests ===\n");
-    
-    uint32_t addr = 0x80000100;
-    int value = 1234;
-    const char *status = "OK";
-    
-    uart_printf("Address: 0x%08x, Value: %d, Status: %s\n", 
-                addr, value, status);
-    
-    uart_printf("Multiple hex: 0x%x 0x%x 0x%x\n",
-                0xAA, 0xBB, 0xCC);
-}
-
-/* ============================================================
- * Kernel entry point
- * ============================================================
- */
 void kernel_main(void)
 {
-    /* Disable watchdog */
-    disable_watchdog();
+    /*
+     * CRITICAL: Disable watchdog FIRST
+     * AM335x boots with watchdog enabled (~3 minute timeout)
+     * Must disable before any other operations
+     */
+    watchdog_disable();
     
-    /* Initialize UART driver */
+    /* Initialize UART for debug output */
     uart_init();
     
-    /* Print banner */
-    uart_printf("\n\n");
+    /* Boot banner */
+    uart_printf("\n");
     uart_printf("====================================\n");
     uart_printf(" RefARM-OS Kernel (with printf!)\n");
     uart_printf("====================================\n");
+    uart_printf("\n");
     
-    /* Run printf tests */
-    test_printf_basic();
-    test_printf_integers();
-    test_printf_hex();
-    test_printf_mixed();
+    /* Basic printf tests */
+    uart_printf("=== Basic printf tests ===\n");
+    uart_printf("String: %s\n", "Hello, World!");
+    uart_printf("Character: %c\n", 'A');
+    uart_printf("Literal: %%\n");
+    uart_printf("\n");
+    
+    /* Integer tests */
+    uart_printf("=== Integer tests ===\n");
+    uart_printf("Decimal: %d\n", 42);
+    uart_printf("Negative: %d\n", -123);
+    uart_printf("Unsigned: %u\n", 0xFFFFFFFF);
+    uart_printf("Zero: %d\n", 0);
+    uart_printf("\n");
+    
+    /* Hexadecimal tests */
+    uart_printf("=== Hexadecimal tests ===\n");
+    uart_printf("Hex (plain): 0x%x\n", 0xdeadbeef);
+    uart_printf("Hex (upper): 0x%X\n", 0xDEADBEEF);
+    uart_printf("Hex (padded): 0x%08x\n", 0x42);
+    uart_printf("Address: 0x%08x\n", 0x80000000);
+    uart_printf("\n");
+    
+    /* Mixed format tests */
+    uart_printf("=== Mixed format tests ===\n");
+    uart_printf("Address: 0x%08x, Value: %d, Status: %s\n", 
+                0x80000100, 1234, "OK");
+    uart_printf("Multiple hex: 0x%x 0x%x 0x%x\n", 0xaa, 0xbb, 0xcc);
+    uart_printf("\n");
     
     /* Success message */
-    uart_printf("\n=== All tests passed ===\n");
+    uart_printf("=== All tests passed ===\n");
     uart_printf("uart_printf() is working!\n");
+    uart_printf("\n");
     
     /* Halt */
-    uart_printf("\nKernel halting.\n");
-    while (1);
+    uart_printf("Kernel halting.\n");
+    while (1)
+        ;
 }

@@ -16,7 +16,7 @@ C_SRC = $(SRC)/kernel/main.c
 
 # Objects
 ASM_OBJ = reset.o entry.o
-C_OBJ = main.o uart.o
+C_OBJ = main.o uart.o watchdog.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -27,6 +27,7 @@ CFLAGS = -Wall -nostdlib -nostartfiles -ffreestanding \
          -fno-builtin \
          -fno-stack-protector \
          -I$(SRC)/include \
+         -I$(SRC)/arch/arm/include \
          -O2 -g
 ASFLAGS = -march=armv7-a -mfloat-abi=soft
 LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib -Wl,-Map=kernel.map
@@ -51,6 +52,9 @@ main.o: $(SRC)/kernel/main.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 uart.o: $(SRC)/drivers/uart.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+watchdog.o: $(SRC)/drivers/watchdog.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 
