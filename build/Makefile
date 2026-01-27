@@ -11,12 +11,14 @@ SRC = ../src
 LINKER = ../linker
 
 # Source files
-ASM_SRC = $(SRC)/arch/arm/boot/reset.S $(SRC)/arch/arm/boot/entry.S
-C_SRC = $(SRC)/kernel/main.c
+ASM_BOOT_SRC = $(SRC)/arch/arm/boot/reset.S $(SRC)/arch/arm/boot/entry.S
+ASM_EXC_SRC = $(SRC)/arch/arm/exceptions/vectors.S $(SRC)/arch/arm/exceptions/exception_entry.S
+C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.c
+C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c
 
 # Objects
-ASM_OBJ = reset.o entry.o
-C_OBJ = main.o uart.o watchdog.o
+ASM_OBJ = vectors.o reset.o entry.o exception_entry.o
+C_OBJ = main.o exception_handlers.o uart.o watchdog.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -35,34 +37,41 @@ LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib -Wl,-Map=kernel.map
 # Targets
 all: kernel.bin
 
-# Create output directories
-$(OBJ_DIR):
-	@mkdir -p $(OBJ_DIR)/arch/arm/boot
-	@mkdir -p $(OBJ_DIR)/arch/arm/lib
-	@mkdir -p $(OBJ_DIR)/kernel
-
-# Compile assembly files
+# Assembly files - Boot
 reset.o: $(SRC)/arch/arm/boot/reset.S
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 entry.o: $(SRC)/arch/arm/boot/entry.S
 	$(CC) $(ASFLAGS) -c $< -o $@
 
+# Assembly files - Exceptions
+vectors.o: $(SRC)/arch/arm/exceptions/vectors.S
+	$(CC) $(ASFLAGS) -c $< -o $@
+
+exception_entry.o: $(SRC)/arch/arm/exceptions/exception_entry.S
+	$(CC) $(ASFLAGS) -c $< -o $@
+
+# C files - Kernel
 main.o: $(SRC)/kernel/main.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+exception_handlers.o: $(SRC)/kernel/exceptions/exception_handlers.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# C files - Drivers
 uart.o: $(SRC)/drivers/uart.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 watchdog.o: $(SRC)/drivers/watchdog.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-
+# Link
 kernel.elf: $(OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ -lgcc
 	@echo "=== Kernel sections ==="
 	@$(CROSS_COMPILE)size $@
 
+# Create binary
 kernel.bin: kernel.elf
 	$(OBJCOPY) -O binary $< $@
 	@echo ""
