@@ -4,7 +4,6 @@
  * Entry point after reset handler.
  *
  * Responsibilities:
- *  - Setup stack for IRQ mode (prepare for future interrupt use)
  *  - Clear .bss section
  *  - Transfer control to kernel_main() (C)
  *
@@ -12,36 +11,19 @@
  *  - CPU is in SVC mode
  *  - IRQ/FIQ are masked
  *  - MMU and cache are OFF
+ *  - ALL exception mode stacks already setup in reset.S
+ *
+ * NOTE: Stack setup has been moved to reset.S to avoid
+ * "death zone" where exceptions could occur before stacks
+ * are ready. See reset.S for stack initialization.
  * ============================================================
  */
 
-    .section .text.entry, "ax"
+    .section .text.boot_entry, "ax"
     .align  4
     .global entry
 
 entry:
-    /* --------------------------------------------------------
-     * Setup IRQ mode stack
-     * --------------------------------------------------------
-     * Switch to IRQ mode, set SP, then return to SVC mode.
-     * IRQ remains masked.
-     */
-    mrs     r0, cpsr
-    bic     r0, r0, #0x1F
-    orr     r0, r0, #0x12          /* IRQ mode */
-    msr     cpsr_c, r0
-
-    ldr     sp, =_irq_stack_top
-
-    /* --------------------------------------------------------
-     * Return to SVC mode
-     * --------------------------------------------------------
-     */
-    mrs     r0, cpsr
-    bic     r0, r0, #0x1F
-    orr     r0, r0, #0x13          /* SVC mode */
-    msr     cpsr_c, r0
-
     /* --------------------------------------------------------
      * Clear .bss section
      * --------------------------------------------------------
@@ -73,10 +55,9 @@ halt:
     b       halt
 
 /* ------------------------------------------------------------
- * External symbols
+ * External symbols from linker
  * ------------------------------------------------------------
  */
-    .extern _irq_stack_top
     .extern _bss_start
     .extern _bss_end
     .extern kernel_main
