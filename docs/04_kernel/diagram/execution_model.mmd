@@ -1,0 +1,59 @@
+stateDiagram-v2
+    direction LR
+
+    %% --- KHỞI TẠO (BOOT) ---
+    state "1. BOOT SEQUENCE" as Boot {
+        direction TB
+        Entry: <b>_start</b><br/>(Entry Point)
+        Early: <b>Early Phase</b><br/>(Minimal Env)
+        Init: <b>Init Phase</b><br/>(Setup Vectors)
+        
+        [*] --> Entry
+        Entry --> Early
+        Early --> Init
+    }
+
+    Boot --> SteadyState: Boot Complete
+
+    state "2. STEADY STATE" as SteadyState {
+        direction TB
+        Loop: <b>Kernel Main Loop</b><br/>(Wait for Events)
+        
+        [*] --> Loop
+    }
+
+    %% --- SỰ KIỆN (EVENTS) ---
+    state "EVENT HANDLING (Privileged)" as Handling {
+        direction TB
+        
+        state "Synchronous" as Sync {
+            Exception: <b>EXCEPTION</b><br/>(Undef, SVC, Abort)
+
+        }
+
+        state "Asynchronous" as Async {
+            Interrupt: <b>INTERRUPT</b><br/>(IRQ, FIQ)
+
+        }
+    }
+
+    %% --- LUỒNG CHUYỂN ĐỔI ---
+    SteadyState --> Exception: Trap / Fault
+    SteadyState --> Interrupt: Hardware Signal
+
+    Exception --> SteadyState: Return (Movs PC, LR)
+    Interrupt --> SteadyState: Return (Subs PC, LR, #4)
+
+    state "System Halt" as Halt
+    Exception --> Halt: Fatal Error
+
+    %% --- STYLE ---
+    classDef boot fill:#fff3cd,stroke:#856404,stroke-width:2px;
+    classDef run fill:#d1e7dd,stroke:#198754,stroke-width:2px;
+    classDef handle fill:#e7f5ff,stroke:#0d6efd,stroke-width:2px;
+    classDef fatal fill:#f8d7da,stroke:#dc3545,stroke-width:2px;
+
+    class Boot boot
+    class SteadyState run
+    class Handling handle
+    class Halt fatal
