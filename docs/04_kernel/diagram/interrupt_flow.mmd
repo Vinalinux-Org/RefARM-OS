@@ -1,0 +1,70 @@
+sequenceDiagram
+    autonumber
+
+    box "Hardware Domain" #f9f9f9
+        participant Periph as Peripheral<br/>(Timer/UART)
+        participant INTC as INTCPS<br/>(Controller)
+        participant CPU as ARM Core
+    end
+
+    box "Software Domain" #e1f5fe
+        participant Vector as Vector Table
+        participant Entry as ASM Entry
+        participant Core as Kernel Dispatcher
+        participant ISR as Driver ISR
+    end
+    
+    Note over Periph,ISR: ASYNCHRONOUS INTERRUPT FLOW (Steady Phase)
+    
+    Periph->>INTC: 1. Assert Signal (IRQ Line)
+    
+    Note over INTC: Priority Check & Arbitration
+    
+    INTC->>CPU: 2. Assert ARM IRQ Line
+    
+    Note right of CPU: Finish Current Instruction
+    
+    alt IRQ Masked (CPSR.I = 1)
+        Note right of CPU: **PENDING:** CPU ignores request.<br/>Wait for unmask.
+    else IRQ Enabled (CPSR.I = 0)
+        activate CPU
+        Note right of CPU: **HARDWARE ACTIONS:**<br/>1. Mode: SVC/USR -> IRQ<br/>2. LR_irq = PC + 4<br/>3. SPSR_irq = CPSR<br/>4. Mask IRQ (I=1)<br/>5. Jump VBAR + 0x18
+        
+        CPU->>Vector: 3. Jump to VBAR + 0x18
+        deactivate CPU
+        
+        Note right of Vector: ldr pc, =vector_irq
+        
+        Vector->>Entry: Branch to Entry Stub
+        activate Entry
+        
+        Note right of Entry: **CONTEXT SAVE:**<br/>1. sub lr, lr, #4 (Fix Return Addr)<br/>2. push {r0-r12, lr, spsr}<br/>3. Switch to IRQ Stack
+        
+        Entry->>Core: 4. irq_handler()
+        activate Core
+        
+        Note right of Core: **DISPATCH:**<br/>1. Read INTC_SIR_IRQ<br/>2. Identify Source (0-127)
+        
+        Core->>ISR: 5. Call Specific ISR
+        activate ISR
+        
+        Note right of ISR: **DRIVER LOGIC:**<br/>1. Read Status<br/>2. Clear Peripheral Flag<br/>3. Data Handling
+        
+        ISR-->>Core: return
+        deactivate ISR
+        
+        Core->>INTC: 6. ACK (NewIRQAgree)
+        INTC-->>CPU: De-assert IRQ Line
+        
+        Core-->>Entry: return
+        deactivate Core
+        
+        Note right of Entry: **CONTEXT RESTORE:**<br/>1. pop {r0-r12, lr, spsr}
+        
+        Entry->>CPU: 7. Exception Return<br/>(subs pc, lr, #4)
+        deactivate Entry
+        
+        activate CPU
+        Note right of CPU: **HARDWARE RETURN:**<br/>1. Restore CPSR<br/>2. Mode IRQ -> SVC/USR<br/>3. I-bit cleared (Unmask)<br/>4. Resume Execution
+        deactivate CPU
+    end

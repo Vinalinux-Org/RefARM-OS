@@ -1,0 +1,72 @@
+graph TB
+    %% --- Boot Configuration ---
+    subgraph CONFIG["Boot Configuration (entry.S)"]
+        BootSetup["<b>Setup VBAR</b><br/>ldr r0, =__vectors_start<br/>mcr p15, ...<br/>(Sets Base Address)"]:::config
+    end
+
+    %% --- Event Sources ---
+    subgraph TRIGGER["Event Sources (Runtime)"]
+        SyncEvent["<b>Synchronous Events</b><br/>(Exception Model)<br/>Undef, SVC, Abort"]:::sync
+        AsyncEvent["<b>Asynchronous Events</b><br/>(Interrupt Model)<br/>IRQ, FIQ"]:::async
+    end
+
+    %% --- Vector Table Layout ---
+    subgraph VECTOR["Vector Table @ VBAR"]
+        direction TB
+        E0["+0x00: Reset<br/>(Unused)"]:::unused
+        
+        %% Sync Vectors
+        E1["+0x04: Undefined"]:::sync_vec
+        E2["+0x08: SVC"]:::sync_vec
+        E3["+0x0C: Prefetch Abort"]:::sync_vec
+        E4["+0x10: Data Abort"]:::sync_vec
+        
+        E5["+0x14: Reserved"]:::unused
+        
+        %% Async Vectors
+        E6["+0x18: IRQ"]:::async_vec
+        E7["+0x1C: FIQ"]:::async_vec
+    end
+
+    %% --- Assembly Stubs ---
+    subgraph ENTRY["Entry Stubs (Assembly)"]
+        StubSync["<b>Sync Stubs</b><br/>exception_entry_xxx<br/>(Save Context)"]:::sync_stub
+        StubAsync["<b>Async Stubs</b><br/>exception_entry_irq<br/>(Save Context + Adjust LR)"]:::async_stub
+    end
+
+    %% --- C Handlers ---
+    subgraph HANDLER["Kernel Handlers (C)"]
+        HandlerSync["<b>Exception Handlers</b><br/>undef_handler()<br/>svc_handler()<br/>abort_handler()"]:::sync_h
+        HandlerAsync["<b>Interrupt Dispatcher</b><br/>irq_handler()<br/>--> Driver ISRs"]:::async_h
+    end
+
+    %% --- Logic Connections ---
+    BootSetup -.->|Defines Location| VECTOR
+
+    %% Flows
+    SyncEvent ==>|Trigger| E1 & E2 & E3 & E4
+    AsyncEvent ==>|Trigger| E6 & E7
+
+    E1 & E2 & E3 & E4 --> StubSync
+    E6 & E7 --> StubAsync
+
+    StubSync --> HandlerSync
+    StubAsync --> HandlerAsync
+
+    %% Return Paths
+    HandlerSync -.->|Return/Restore| SyncEvent
+    HandlerAsync -.->|Return/Restore| AsyncEvent
+
+    %% --- Styling ---
+    classDef config fill:#fff3cd,stroke:#856404,stroke-width:2px;
+    classDef unused fill:#f0f0f0,stroke:#ccc,stroke-dasharray: 5 5;
+    
+    classDef sync fill:#ffe1e1,stroke:#dc3545,stroke-width:2px;
+    classDef sync_vec fill:#ffe1e1,stroke:#dc3545;
+    classDef sync_stub fill:#fff0f0,stroke:#dc3545,stroke-dasharray: 5 5;
+    classDef sync_h fill:#ffe1e1,stroke:#dc3545;
+
+    classDef async fill:#e1d4ff,stroke:#6f42c1,stroke-width:2px;
+    classDef async_vec fill:#e1d4ff,stroke:#6f42c1;
+    classDef async_stub fill:#f3eeff,stroke:#6f42c1,stroke-dasharray: 5 5;
+    classDef async_h fill:#e1d4ff,stroke:#6f42c1;
