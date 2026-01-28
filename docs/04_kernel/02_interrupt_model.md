@@ -253,3 +253,24 @@ Mọi nội dung ngoài danh sách trên **không được giả định**.
 - Interrupt model phải giữ được tính **đơn giản** và **dự đoán được**.
 - Mọi mở rộng interrupt handling phải bắt đầu từ việc **cập nhật model**, không phải từ code.
 - Interrupt **không được** trở thành cơ chế "vá" cho thiết kế kernel.
+
+---
+
+## 13. Implementation Notes
+
+Interrupt model này được triển khai chi tiết trong:
+- **`04_kernel/05_interrupt_infrastructure.md`** - Implementation guide cho IRQ dispatch mechanism
+
+**Diagrams:**
+- **`docs/04_kernel/diagram/irq_architecture_overview.mmd`** - High-level component architecture
+- **`docs/04_kernel/diagram/irq_dispatch_contract.mmd`** - Dispatch contract và decision flow
+- **`docs/04_kernel/diagram/eoi_sequence.mmd`** - EOI timing sequence (CRITICAL)
+
+**Implementation status:**
+- [ ] IRQ dispatch framework
+- [ ] INTC driver
+- [ ] IRQ entry stub (assembly)
+- [ ] Kernel IRQ enable
+- [ ] Timer interrupt test
+
+Xem `05_interrupt_infrastructure.md` để biết implementation checklist đầy đủ và testing strategy.

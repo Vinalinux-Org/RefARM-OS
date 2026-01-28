@@ -1,0 +1,58 @@
+flowchart TD
+    Title["IRQ Dispatch Contract<br/>(Mandatory Behavior)<br/><br/>This diagram defines required decision logic.<br/>Implementation details may differ."]
+    
+    Entry["IRQ Dispatch Entry<br/>(from exception_entry_irq)"]
+    
+    QueryINTC["Query INTC<br/>Lấy Active IRQ Number"]
+    
+    ValidateNum{"IRQ Number<br/>Valid?<br/>(0-127)"}
+    
+    CheckReg{"Handler<br/>Registered?<br/>(table lookup)"}
+    
+    CallISR["Call Registered Handler<br/>(Driver ISR)"]
+    
+    HandleSpurious["Handle Spurious IRQ<br/>(Log + Continue)"]
+    
+    EOI["Send EOI to INTC<br/>(CRITICAL CONTRACT)"]
+    
+    Return["Return to<br/>Exception Entry Stub"]
+    
+    Title --> Entry
+    Entry --> QueryINTC
+    QueryINTC --> ValidateNum
+    
+    ValidateNum -->|"No<br/>(Invalid Number)"| HandleSpurious
+    ValidateNum -->|"Yes"| CheckReg
+    
+    CheckReg -->|"No<br/>(Unhandled IRQ)"| HandleSpurious
+    CheckReg -->|"Yes"| CallISR
+    
+    HandleSpurious --> EOI
+    CallISR --> EOI
+    
+    EOI --> Return
+    
+    %% Annotations
+    Note1["CONTRACT:<br/>EOI MUST be called<br/>for ALL IRQ paths<br/>(valid, spurious, unhandled)"]
+    
+    Note2["CONTRACT:<br/>Handler MUST NOT block<br/>Handler MUST be fast<br/>Handler MUST NOT malloc"]
+    
+    EOI -.->|"Critical Timing"| Note1
+    CallISR -.->|"Handler Constraints"| Note2
+    
+    %% Styling
+    classDef title fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef entry fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef decision fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef action fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef critical fill:#ffebee,stroke:#c62828,stroke-width:3px
+    classDef exit fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef note fill:#f5f5f5,stroke:#616161,stroke-width:1px,stroke-dasharray: 5 5
+    
+    class Title title
+    class Entry entry
+    class ValidateNum,CheckReg decision
+    class QueryINTC,CallISR,HandleSpurious action
+    class EOI critical
+    class Return exit
+    class Note1,Note2 note
