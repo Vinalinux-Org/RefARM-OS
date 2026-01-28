@@ -13,12 +13,12 @@ LINKER = ../linker
 # Source files
 ASM_BOOT_SRC = $(SRC)/arch/arm/boot/reset.S $(SRC)/arch/arm/boot/entry.S
 ASM_EXC_SRC = $(SRC)/arch/arm/exceptions/vectors.S $(SRC)/arch/arm/exceptions/exception_entry.S
-C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.c
-C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c
+C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.c $(SRC)/kernel/irq/irq_core.c
+C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/intc.c $(SRC)/drivers/timer.c
 
 # Objects
 ASM_OBJ = vectors.o reset.o entry.o exception_entry.o
-C_OBJ = main.o exception_handlers.o uart.o watchdog.o
+C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -58,11 +58,20 @@ main.o: $(SRC)/kernel/main.c
 exception_handlers.o: $(SRC)/kernel/exceptions/exception_handlers.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+irq_core.o: $(SRC)/kernel/irq/irq_core.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # C files - Drivers
 uart.o: $(SRC)/drivers/uart.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 watchdog.o: $(SRC)/drivers/watchdog.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+intc.o: $(SRC)/drivers/intc.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+timer.o: $(SRC)/drivers/timer.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link
