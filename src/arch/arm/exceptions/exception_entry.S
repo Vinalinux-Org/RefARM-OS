@@ -171,22 +171,32 @@ exception_entry_data_abort:
     b       .
 
 /* ============================================================
- * IRQ Exception Entry (Stub)
+ * IRQ Exception Entry
  * ------------------------------------------------------------
  * Entered in: IRQ mode
  * LR_irq = address of next instruction + 4
  * SPSR_irq = CPSR before exception
  * 
- * NOTE: IRQ is MASKED in current phase, so this should never
- * execute. If it does, it indicates a bug (IRQ enabled when
- * it shouldn't be).
+ * This stub:
+ * 1. Adjusts LR to point to interrupted instruction
+ * 2. Saves context (r0-r12, lr, SPSR)
+ * 3. Calls irq_dispatch() in C
+ * 4. Restores context
+ * 5. Returns from exception
  * ============================================================ */
 exception_entry_irq:
-    /* Adjust return address */
+    /*
+     * CRITICAL: Adjust return address FIRST
+     * ARM IRQ LR points to PC+4, but we want to return to interrupted instruction
+     * Per ARM Architecture Reference Manual: IRQ return needs LR-4
+     */
     sub     lr, lr, #4
     
-    /* Save context on IRQ mode stack
-     * Order: r0-r12, lr first, then SPSR
+    /*
+     * Save context on IRQ mode stack
+     * CRITICAL ORDER (matches struct exception_context in exception.h):
+     * 1. Save r0-r12, LR FIRST (preserves original r0!)
+     * 2. Save SPSR after
      */
     stmfd   sp!, {r0-r12, lr}
     
@@ -194,17 +204,29 @@ exception_entry_irq:
     mrs     r0, spsr
     stmfd   sp!, {r0}
     
-    /* Get context pointer (still on IRQ stack) */
+    /*
+     * Call C dispatcher
+     * r0 = pointer to exception_context (current SP)
+     * SP now points to complete saved context
+     */
     mov     r0, sp
+    bl      irq_dispatch
     
-    /* Switch to SVC mode */
-    cps     #0x13
+    /*
+     * Restore context
+     * irq_dispatch() has completed (including EOI)
+     */
     
-    /* Call C handler (should print error and halt) */
-    bl      handle_irq
+    /* Restore SPSR */
+    ldmfd   sp!, {r0}
+    msr     spsr_cxsf, r0
     
-    /* Should never return - halt */
-    b       .
+    /*
+     * Return from IRQ
+     * ldmfd with ^ suffix: restores CPSR from SPSR automatically
+     * This also switches CPU mode back to previous mode (typically SVC)
+     */
+    ldmfd   sp!, {r0-r12, pc}^
 
 /* ============================================================
  * FIQ Exception Entry (Stub)
