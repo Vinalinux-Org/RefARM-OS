@@ -1,138 +1,152 @@
 /* ============================================================
- * intc.c
+ * intc_debug.c - INTC driver with EXTENSIVE DEBUG
  * ------------------------------------------------------------
- * AM335x INTC (Interrupt Controller) driver
- * Target: AM335x / BeagleBone Black
- * ============================================================ */
+ * AM335x INTC driver
+ * ============================================================
+ */
 
 #include "intc.h"
 #include "mmio.h"
 #include "cpu.h"
 
+/* For debugging prints */
+extern void uart_printf(const char *fmt, ...);
+
 /* ============================================================
- * INTC Driver Implementation
- * ============================================================ */
+ * INTC Implementation with Debug Logging
+ * ============================================================
+ */
 
 void intc_init(void)
 {
-    /*
-     * INTC Initialization Sequence
-     * See: AM335x TRM Chapter 6, Section 6.5
-     * 
-     * 1. Mask all interrupts
-     * 2. Disable threshold mechanism
-     * 3. Enable NEWIRQAGR protocol
-     */
+    uart_printf("\n");
+    uart_printf("========================================\n");
+    uart_printf("INTC INITIALIZATION START\n");
+    uart_printf("========================================\n");
     
-    /* Step 1: Mask all interrupts (set all mask bits) */
-    /* Bank 0 (IRQ 0-31) */
+    /* Step 1: Mask all interrupts */
+    uart_printf("[INTC_INIT] Step 1: Masking all interrupts...\n");
+    
+    uart_printf("  Bank 0 (IRQ 0-31)\n");
     mmio_write32(INTC_BASE + INTC_MIR_SET(0), 0xFFFFFFFF);
     
-    /* Bank 1 (IRQ 32-63) */
+    uart_printf("  Bank 1 (IRQ 32-63)\n");
     mmio_write32(INTC_BASE + INTC_MIR_SET(1), 0xFFFFFFFF);
     
-    /* Bank 2 (IRQ 64-95) */
+    uart_printf("  Bank 2 (IRQ 64-95)\n");
     mmio_write32(INTC_BASE + INTC_MIR_SET(2), 0xFFFFFFFF);
     
-    /* Bank 3 (IRQ 96-127) */
+    uart_printf("  Bank 3 (IRQ 96-127)\n");
     mmio_write32(INTC_BASE + INTC_MIR_SET(3), 0xFFFFFFFF);
     
-    /* Step 2: Disable threshold mechanism (set to 0xFF) */
+    /* Verify */
+    uint32_t mir0 = mmio_read32(INTC_BASE + INTC_MIR(0));
+    uint32_t mir1 = mmio_read32(INTC_BASE + INTC_MIR(1));
+    uint32_t mir2 = mmio_read32(INTC_BASE + INTC_MIR(2));
+    uint32_t mir3 = mmio_read32(INTC_BASE + INTC_MIR(3));
+    
+    uart_printf("  Verify: MIR0=0x%08x, MIR1=0x%08x\n", mir0, mir1);
+    uart_printf("  Verify: MIR2=0x%08x, MIR3=0x%08x\n", mir2, mir3);
+    
+    /* Step 2: Disable threshold */
+    uart_printf("[INTC_INIT] Step 2: Disabling threshold mechanism...\n");
     mmio_write32(INTC_BASE + INTC_THRESHOLD, 0xFF);
     
-    /* 
-     * Step 3: Enable NEWIRQAGR protocol
-     * Write NEWIRQAGR bit to signal initial agreement
-     */
+    uint32_t threshold = mmio_read32(INTC_BASE + INTC_THRESHOLD);
+    uart_printf("  THRESHOLD = 0x%08x (0xFF = disabled)\n", threshold);
+    
+    /* Step 3: Enable NEWIRQAGR */
+    uart_printf("[INTC_INIT] Step 3: Enabling NEWIRQAGR protocol...\n");
     mmio_write32(INTC_BASE + INTC_CONTROL, NEWIRQAGR);
     
-    /* 
-     * Note: Priority configuration (INTC_ILR registers) not needed
-     * Default priority 0 (highest) is fine for all IRQs
-     */
+    uint32_t control = mmio_read32(INTC_BASE + INTC_CONTROL);
+    uart_printf("  CONTROL = 0x%08x (bit 0 = NEWIRQAGR)\n", control);
+    
+    uart_printf("========================================\n");
+    uart_printf("INTC INITIALIZATION DONE\n");
+    uart_printf("========================================\n\n");
 }
 
 uint32_t intc_get_active_irq(void)
 {
-    /*
-     * Read INTC_SIR_IRQ register
-     * Bits [6:0]: ACTIVEIRQ (IRQ number 0-127)
-     * Bits [31:7]: SPURIOUSIRQ flag
-     * 
-     * If spurious flag is set (any bit in [31:7]), return 128
-     */
     uint32_t sir = mmio_read32(INTC_BASE + INTC_SIR_IRQ);
     
-    /* Check spurious flag */
+    uart_printf("[INTC_GET_ACTIVE_IRQ] SIR_IRQ = 0x%08x\n", sir);
+    uart_printf("[INTC_GET_ACTIVE_IRQ] ACTIVEIRQ (bits 6:0) = %u\n", sir & 0x7F);
+    uart_printf("[INTC_GET_ACTIVE_IRQ] SPURIOUS (bits 31:7) = 0x%08x\n", sir & 0xFFFFFF80);
+    
     if (sir & SPURIOUSIRQ_MASK) {
-        return 128;  /* Spurious IRQ */
+        uart_printf("[INTC_GET_ACTIVE_IRQ] Spurious IRQ detected!\n");
+        return 128;
     }
     
-    /* Extract IRQ number */
     return sir & ACTIVEIRQ_MASK;
 }
 
 void intc_eoi(void)
 {
-    /*
-     * End-of-Interrupt Sequence (CRITICAL)
-     * See: AM335x TRM Chapter 6, Section 6.5
-     * See: docs/04_kernel/diagram/eoi_sequence.mmd
-     * 
-     * 1. Write NEWIRQAGR to INTC_CONTROL
-     * 2. Execute Data Synchronization Barrier (DSB)
-     * 
-     * CONTRACT:
-     * - This MUST be called after handling IRQ
-     * - Without EOI, INTC will NOT de-assert IRQ line
-     * - CPU will immediately re-enter IRQ handler (infinite loop)
-     */
-    
-    /* Step 1: Write NEWIRQAGR */
+    uart_printf("[INTC_EOI] Writing NEWIRQAGR to CONTROL...\n");
     mmio_write32(INTC_BASE + INTC_CONTROL, NEWIRQAGR);
     
-    /* 
-     * Step 2: Data Synchronization Barrier
-     * 
-     * Ensures the write to INTC_CONTROL completes before
-     * returning from IRQ handler.
-     * 
-     * Without DSB, write may be posted and EOI may not
-     * complete before IRQ return, causing spurious re-entry.
-     */
+    uart_printf("[INTC_EOI] Executing DSB...\n");
     dsb();
+    
+    uart_printf("[INTC_EOI] Complete\n");
 }
 
 void intc_enable_irq(uint32_t irq_num)
 {
-    /*
-     * Enable IRQ by clearing mask bit
-     * 
-     * Bank calculation:
-     * - Bank 0: IRQ 0-31   (offset 0x88)
-     * - Bank 1: IRQ 32-63  (offset 0xA8)
-     * - Bank 2: IRQ 64-95  (offset 0xC8)
-     * - Bank 3: IRQ 96-127 (offset 0xE8)
-     */
+    uart_printf("\n[INTC_ENABLE_IRQ] Enabling IRQ %u...\n", irq_num);
     
     if (irq_num >= 128) {
+        uart_printf("[INTC_ENABLE_IRQ] ERROR: Invalid IRQ number!\n");
         return;
     }
     
-    uint32_t bank = irq_num / 32;  /* 0-3 */
-    uint32_t bit = irq_num % 32;   /* 0-31 */
+    uint32_t bank = irq_num / 32;
+    uint32_t bit = irq_num % 32;
     
-    /* Write 1 to MIR_CLEAR register to unmask (enable) IRQ */
+    uart_printf("[INTC_ENABLE_IRQ] Bank = %u, Bit = %u\n", bank, bit);
+    uart_printf("[INTC_ENABLE_IRQ] MIR_CLEAR offset = 0x%08x\n", INTC_MIR_CLEAR(bank));
+    uart_printf("[INTC_ENABLE_IRQ] Bit mask = 0x%08x\n", (1 << bit));
+    
+    /* Read before */
+    uint32_t mir_before = mmio_read32(INTC_BASE + INTC_MIR(bank));
+    uart_printf("[INTC_ENABLE_IRQ] MIR%u (before) = 0x%08x\n", bank, mir_before);
+    
+    /* Write to MIR_CLEAR */
     mmio_write32(INTC_BASE + INTC_MIR_CLEAR(bank), (1 << bit));
+    
+    /* Read after */
+    uint32_t mir_after = mmio_read32(INTC_BASE + INTC_MIR(bank));
+    uart_printf("[INTC_ENABLE_IRQ] MIR%u (after) = 0x%08x\n", bank, mir_after);
+    
+    /* Verify */
+    if (mir_after & (1 << bit)) {
+        uart_printf("[INTC_ENABLE_IRQ] ERROR: Bit still SET (IRQ still masked!)\n");
+    } else {
+        uart_printf("[INTC_ENABLE_IRQ] SUCCESS: Bit CLEARED (IRQ unmasked)\n");
+    }
+    
+    /* Check pending */
+    uint32_t pending = mmio_read32(INTC_BASE + INTC_PENDING_IRQ(bank));
+    uart_printf("[INTC_ENABLE_IRQ] PENDING_IRQ%u = 0x%08x\n", bank, pending);
+    if (pending & (1 << bit)) {
+        uart_printf("[INTC_ENABLE_IRQ] IRQ %u is PENDING!\n", irq_num);
+    }
+    
+    /* Check ILR */
+    uint32_t ilr = mmio_read32(INTC_BASE + INTC_ILR(irq_num));
+    uart_printf("[INTC_ENABLE_IRQ] ILR[%u] = 0x%08x\n", irq_num, ilr);
+    uart_printf("[INTC_ENABLE_IRQ]   Priority = %u\n", (ilr >> 2) & 0x3F);
+    uart_printf("[INTC_ENABLE_IRQ]   FIQ/nIRQ = %u (0=IRQ, 1=FIQ)\n", ilr & 0x1);
+    
+    uart_printf("[INTC_ENABLE_IRQ] Done\n\n");
 }
 
 void intc_disable_irq(uint32_t irq_num)
 {
-    /*
-     * Disable IRQ by setting mask bit
-     * 
-     * Bank calculation same as enable
-     */
+    uart_printf("[INTC_DISABLE_IRQ] Disabling IRQ %u...\n", irq_num);
     
     if (irq_num >= 128) {
         return;
@@ -141,33 +155,17 @@ void intc_disable_irq(uint32_t irq_num)
     uint32_t bank = irq_num / 32;
     uint32_t bit = irq_num % 32;
     
-    /* Write 1 to MIR_SET register to mask (disable) IRQ */
     mmio_write32(INTC_BASE + INTC_MIR_SET(bank), (1 << bit));
+    
+    uart_printf("[INTC_DISABLE_IRQ] Done\n");
 }
 
 void intc_set_priority(uint32_t irq_num, uint32_t priority)
 {
-    /*
-     * Set IRQ priority (optional)
-     * 
-     * Current implementation does not use priority.
-     * All IRQs default to priority 0 (highest).
-     * 
-     * If needed in future:
-     * - Write to INTC_ILR(irq_num) register
-     * - Bits [5:0]: PRIORITY (0-63, lower = higher)
-     * - Bit 0: FIQNIRQ (0=IRQ, 1=FIQ)
-     */
-    
     if (irq_num >= 128 || priority > 63) {
         return;
     }
     
-    /* 
-     * Format: [31:6]=Reserved, [5:0]=PRIORITY, [0]=FIQNIRQ
-     * For IRQ routing: FIQNIRQ=0
-     */
-    uint32_t ilr = (priority & 0x3F);  /* Priority only, route to IRQ */
-    
+    uint32_t ilr = (priority & 0x3F);
     mmio_write32(INTC_BASE + INTC_ILR(irq_num), ilr);
 }
