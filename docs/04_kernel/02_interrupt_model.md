@@ -267,10 +267,10 @@ Interrupt model này được triển khai chi tiết trong:
 - **`docs/04_kernel/diagram/eoi_sequence.mmd`** - EOI timing sequence (CRITICAL)
 
 **Implementation status:**
-- [ ] IRQ dispatch framework
-- [ ] INTC driver
-- [ ] IRQ entry stub (assembly)
-- [ ] Kernel IRQ enable
+- [x] IRQ dispatch framework
+- [x] INTC driver
+- [x] IRQ entry stub (assembly)
+- [x] Kernel IRQ enable
 - [ ] Timer interrupt test
 
 Xem `05_interrupt_infrastructure.md` để biết implementation checklist đầy đủ và testing strategy.

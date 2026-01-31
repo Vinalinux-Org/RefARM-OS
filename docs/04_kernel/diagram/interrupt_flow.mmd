@@ -40,7 +40,7 @@ sequenceDiagram
         
         Note right of Entry: **CONTEXT SAVE:**<br/>1. sub lr, lr, #4 (Fix Return Addr)<br/>2. push {r0-r12, lr, spsr}<br/>3. Switch to IRQ Stack
         
-        Entry->>Core: 4. irq_handler()
+        Entry->>Core: 4. irq_dispatch()
         activate Core
         
         Note right of Core: **DISPATCH:**<br/>1. Read INTC_SIR_IRQ<br/>2. Identify Source (0-127)

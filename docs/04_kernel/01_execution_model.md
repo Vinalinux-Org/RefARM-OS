@@ -116,14 +116,14 @@ Pha này chịu trách nhiệm:
 
 **Đặc điểm về mặt mô hình:**
 - Kernel đã hoàn tất initialization.
-- Kernel được thiết kế để có thể chạy với interrupt enabled.
-- Kernel tiếp tục thực thi trong một vòng lặp hoặc trạng thái ổn định.
+- Kernel chạy với interrupt enabled.
+- Kernel tiếp tục thực thi trong một vòng lặp ổn định, xử lý sự kiện từ interrupt-driven I/O.
 
-> **In the steady execution phase, the kernel is designed to eventually operate with interrupts enabled. In the current stage, interrupts remain disabled.**
+> **In the steady execution phase, the kernel operates with interrupts enabled. The main loop polls the UART RX buffer and dispatches characters to the shell layer.**
 
 Pha này là:
-- Điểm neo cho các thiết kế tương lai (interrupt handling, timer, v.v.).
-- **Không** đồng nghĩa với việc các cơ chế đó đã được triển khai ngay.
+- Điểm neo cho các thiết kế tương lai (scheduler, timer, v.v.).
+- Hiện tại sử dụng event loop đơn giản: `uart_getc()` → `shell_process_char()` → `wfi()`.
 
 ---
 
@@ -155,9 +155,10 @@ Trong execution model này:
 - **Exception** (sự kiện đồng bộ) có thể xảy ra trong bất kỳ execution phase nào.
 - Execution model cho phép tư duy về interrupt trong steady phase.
 
-Tuy nhiên, trong trạng thái hiện tại:
-- Interrupt vẫn đang bị mask.
-- Không có interrupt handler thực thi.
+Trong trạng thái hiện tại:
+- Interrupt đã được enable (IRQ 72 - UART0 RX).
+- UART RX interrupt handler đăng ký và hoạt động.
+- Main loop poll RX buffer, gửi character đến shell layer.
 
 Chi tiết được định nghĩa trong:
 - Interrupt handling: **`04_kernel/02_interrupt_model.md`**
