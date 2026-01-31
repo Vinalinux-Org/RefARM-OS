@@ -37,7 +37,7 @@ graph TB
     %% --- C Handlers ---
     subgraph HANDLER["Kernel Handlers (C)"]
         HandlerSync["<b>Exception Handlers</b><br/>undef_handler()<br/>svc_handler()<br/>abort_handler()"]:::sync_h
-        HandlerAsync["<b>Interrupt Dispatcher</b><br/>irq_handler()<br/>--> Driver ISRs"]:::async_h
+        HandlerAsync["<b>Interrupt Dispatcher</b><br/>irq_dispatch()<br/>--> Driver ISRs"]:::async_h
     end
 
     %% --- Logic Connections ---

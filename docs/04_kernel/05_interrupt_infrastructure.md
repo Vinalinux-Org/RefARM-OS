@@ -703,28 +703,41 @@ void kernel_main(void)
     /* 1. Critical early init */
     watchdog_disable();
     uart_init();
-    
-    uart_printf("Kernel starting...\n");
-    
+
+    uart_printf("\n\n");
+    uart_printf("========================================\n");
+    uart_printf(" RefARM-OS Booting...\n");
+    uart_printf("========================================\n\n");
+
     /* 2. Initialize interrupt infrastructure */
-    uart_printf("Initializing INTC...\n");
+    uart_printf("[BOOT] Initializing INTC...\n");
     intc_init();
-    
-    uart_printf("Initializing IRQ framework...\n");
-    irq_init();  /* Clear handler table */
-    
-    /* 3. Register peripheral handlers (example) */
-    /* timer_init(); */  /* Timer will register its handler */
-    
+
+    uart_printf("[BOOT] Initializing IRQ framework...\n");
+    irq_init();
+
+    /* 3. Enable UART RX interrupt (registers handler + enables IRQ 72) */
+    uart_printf("[BOOT] Enabling UART RX interrupt...\n");
+    uart_enable_rx_interrupt();
+
     /* 4. Enable IRQ in CPSR */
-    uart_printf("Enabling IRQ...\n");
+    uart_printf("[BOOT] Enabling IRQ...\n");
     irq_enable();
-    
-    uart_printf("Kernel ready. Waiting for interrupts...\n");
-    
-    /* 5. Main loop (WFI saves power) */
+
+    uart_printf("[BOOT] Done.\n\n");
+
+    /* 5. Initialize shell (prints banner + prompt) */
+    shell_init();
+
+    /* 6. Main loop: poll RX buffer, dispatch to shell */
     while (1) {
-        asm volatile("wfi");  /* Wait for interrupt */
+        int c = uart_getc();
+
+        if (c >= 0) {
+            shell_process_char((char)c);
+        } else {
+            wfi();  /* No data available, sleep until next IRQ */
+        }
     }
 }
 ```
@@ -863,37 +876,37 @@ Timer tick: 300
 ### 9.3. Verification Checklist
 
 **Pre-implementation:**
-- [ ] Vector table has `vector_irq` entry at offset +0x18
-- [ ] IRQ stack initialized in `reset.S`
-- [ ] VBAR configured to point to vector table
+- [x] Vector table has `vector_irq` entry at offset +0x18
+- [x] IRQ stack initialized in `reset.S`
+- [x] VBAR configured to point to vector table
 
 **IRQ Entry:**
-- [ ] `exception_entry_irq` adjusts LR correctly (sub lr, lr, #4)
-- [ ] Context saved in correct order (r0-r12, lr, spsr)
-- [ ] `irq_dispatch()` called with context pointer
-- [ ] Context restored correctly
-- [ ] Return instruction uses SPSR restore (ldmfd ... pc^)
+- [x] `exception_entry_irq` adjusts LR correctly (sub lr, lr, #4)
+- [x] Context saved in correct order (r0-r12, lr, spsr)
+- [x] `irq_dispatch()` called with context pointer
+- [x] Context restored correctly
+- [x] Return instruction uses SPSR restore (ldmfd ... pc^)
 
 **Dispatch Framework:**
-- [ ] `irq_table` initialized to zero
-- [ ] Spurious IRQ handled without crash
-- [ ] Unhandled IRQ logged and EOI'd
-- [ ] Handler called with correct data pointer
-- [ ] Statistics counter incremented
+- [x] `irq_table` initialized to zero
+- [x] Spurious IRQ handled without crash
+- [x] Unhandled IRQ logged and EOI'd
+- [x] Handler called with correct data pointer
+- [x] Statistics counter incremented
 
 **INTC Driver:**
-- [ ] INTC soft reset completed
-- [ ] All IRQs initially disabled
-- [ ] EOI sequence correct (write CONTROL = 0x1)
-- [ ] Enable/disable IRQ updates correct MIR register
-- [ ] Active IRQ number read correctly from SIR_IRQ
+- [x] INTC soft reset completed
+- [x] All IRQs initially disabled
+- [x] EOI sequence correct (write CONTROL = 0x1)
+- [x] Enable/disable IRQ updates correct MIR register
+- [x] Active IRQ number read correctly from SIR_IRQ
 
 **Kernel Integration:**
-- [ ] `intc_init()` called before IRQ enable
-- [ ] `irq_init()` called before IRQ enable
-- [ ] IRQ enabled in CPSR at correct time
+- [x] `intc_init()` called before IRQ enable
+- [x] `irq_init()` called before IRQ enable
+- [x] IRQ enabled in CPSR at correct time
 - [ ] Timer interrupts fire and handled
-- [ ] No crashes or hangs
+- [x] No crashes or hangs
 
 ---
 
@@ -993,40 +1006,40 @@ Mọi thay đổi làm ảnh hưởng đến **IRQ dispatch flow** hoặc **hand
 Khi implement interrupt infrastructure, verify:
 
 **Core Framework:**
-- [ ] `irq_dispatch()` implemented
-- [ ] `irq_table` defined and initialized
-- [ ] `irq_register_handler()` implemented
-- [ ] `irq_unregister_handler()` implemented
-- [ ] Spurious IRQ handling correct
+- [x] `irq_dispatch()` implemented
+- [x] `irq_table` defined and initialized
+- [x] `irq_register_handler()` implemented
+- [x] `irq_unregister_handler()` implemented
+- [x] Spurious IRQ handling correct
 
 **INTC Driver:**
-- [ ] `intc_init()` implemented
-- [ ] `intc_get_active_irq()` implemented
-- [ ] `intc_eoi()` implemented
-- [ ] `intc_enable_irq()` implemented
-- [ ] `intc_disable_irq()` implemented
+- [x] `intc_init()` implemented
+- [x] `intc_get_active_irq()` implemented
+- [x] `intc_eoi()` implemented
+- [x] `intc_enable_irq()` implemented
+- [x] `intc_disable_irq()` implemented
 
 **Assembly Entry:**
-- [ ] `exception_entry_irq` implemented
-- [ ] LR adjustment correct
-- [ ] Context save/restore correct
-- [ ] Call to `irq_dispatch()` correct
+- [x] `exception_entry_irq` implemented
+- [x] LR adjustment correct
+- [x] Context save/restore correct
+- [x] Call to `irq_dispatch()` correct
 
 **Kernel Integration:**
-- [ ] `irq_enable()` / `irq_disable()` implemented
-- [ ] `irq_init()` called in `kernel_main()`
-- [ ] `intc_init()` called before IRQ enable
-- [ ] IRQ enabled at correct point
+- [x] `irq_enable()` / `irq_disable()` implemented
+- [x] `irq_init()` called in `kernel_main()`
+- [x] `intc_init()` called before IRQ enable
+- [x] IRQ enabled at correct point
 
 **Testing:**
-- [ ] Spurious IRQ test passes
-- [ ] Handler registration test passes
+- [x] Spurious IRQ test passes
+- [x] Handler registration test passes
 - [ ] Timer interrupt test passes
-- [ ] No kernel crashes or hangs
-- [ ] EOI sequence verified
+- [x] No kernel crashes or hangs
+- [x] EOI sequence verified
 
 **Documentation:**
-- [ ] This document completed
-- [ ] Diagram created (`irq_dispatch_detail.mmd`)
-- [ ] Link from `02_interrupt_model.md` added
-- [ ] Code comments updated
+- [x] This document completed
+- [x] Diagram created (`irq_dispatch_detail.mmd`)
+- [x] Link from `02_interrupt_model.md` added
+- [x] Code comments updated
