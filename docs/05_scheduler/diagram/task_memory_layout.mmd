@@ -1,0 +1,57 @@
+flowchart TB
+    %% =========================================
+    %% Task Stack (User/System Memory)
+    %% =========================================
+    subgraph TASK_MEM["Task Memory (Stack)"]
+        direction TB
+
+        HIGH["High Address (Stack Base)"]
+        
+        STACK_USED["... Local Variables ...
+... Function Frames ..."]
+        
+        SP_NODE["Current SP (Top of Stack)"]
+        
+        STACK_FREE["(Free Space)"]
+        
+        LOW["Low Address (Limit)"]
+
+        HIGH --> STACK_USED
+        STACK_USED --> SP_NODE
+        SP_NODE --> STACK_FREE
+        STACK_FREE --> LOW
+    end
+
+    %% =========================================
+    %% TCB / Context (Kernel Memory)
+    %% =========================================
+    subgraph KERNEL_MEM["Kernel Memory (TCB)"]
+        direction TB
+        
+        CTX["<b>Saved Context</b>
+- r0-r12
+- lr, pc, cpsr
+- <b>sp (saved stack pointer)</b>"]
+    end
+    
+    NOTE[" <b>NOTE:</b>
+Saved context is valid
+only when task is NOT running"]
+
+    %% =========================================
+    %% Logic Connection
+    %% =========================================
+    CTX -.->|sp points to| SP_NODE
+    CTX -.- NOTE
+
+    %% =========================================
+    %% Styling
+    %% =========================================
+    style TASK_MEM fill:#f9f9f9,stroke:#333,stroke-dasharray: 5 5
+    style KERNEL_MEM fill:#e2e3e5,stroke:#333
+    
+    style CTX fill:#fff2cc,stroke:#d6b656,stroke-width:2px
+    style SP_NODE fill:#ffcccc,stroke:#b02a37,stroke-width:2px,color:#000
+    style HIGH fill:#d1e7dd,stroke:#198754
+    style LOW fill:#d1e7dd,stroke:#198754
+    style NOTE fill:#fff,stroke:#333,stroke-dasharray: 2 2

@@ -1,0 +1,69 @@
+sequenceDiagram
+    autonumber
+    participant HW as Timer Hardware
+    participant CPU as ARM Core
+    participant VT as Vector Table
+    participant IRQ_ASM as exception_entry_irq
+    participant IRQ_C as irq_dispatch
+    participant TIMER as timer_isr
+    participant SCHED as sched_tick
+    participant CTX as context_switch
+    participant TASK as Next Task
+    
+    %% --- HARDWARE PHASE ---
+    Note over HW,CPU: 1. INTERRUPT TRIGGER
+    HW->>CPU: Assert IRQ Line
+    Note right of CPU: Hardware Actions:<br/>1. LR_irq = PC+4<br/>2. SPSR_irq = CPSR<br/>3. Mode = IRQ
+    
+    CPU->>VT: Jump to Vector + 0x18
+    
+    VT->>IRQ_ASM: Jump to Stub
+    
+    %% --- IRQ HANDLING PHASE ---
+    rect rgb(240, 248, 255)
+    Note over IRQ_ASM: 2. IRQ ENTRY STUB
+    Note right of IRQ_ASM: Save scratch regs (r0-r3, r12)<br/>on IRQ Stack
+    
+    IRQ_ASM->>IRQ_C: call irq_dispatch()
+    
+    IRQ_C->>TIMER: call timer_isr()
+    
+    Note right of TIMER: 3. DRIVER ACK
+    Note right of TIMER: - Clear Timer Flag<br/>- INTC EOI (Crucial!)<br/>- DSB Barrier
+    end
+    
+    TIMER->>SCHED: call sched_tick()
+    
+    %% --- SCHEDULER PHASE ---
+    rect rgb(255, 250, 240)
+    Note over SCHED: 4. SCHEDULER DECISION
+    Note right of SCHED: Update States (Ready/Run)<br/>Select Next Task
+    end
+    
+    SCHED->>CTX: context_switch(prev, next)
+    
+    %% --- CONTEXT SWITCH PHASE (CRITICAL) ---
+    rect rgb(255, 235, 235)
+    Note over CTX: 5. SAVE CONTEXT (The Tricky Part)
+    
+    Note right of CTX: HANDOVER:<br/>Retrieve LR_irq & SPSR_irq<br/>(from IRQ stack/mode)
+    
+    Note right of CTX: MODE SWITCH:<br/>CPS #0x13 (Switch to SVC)
+    
+    Note right of CTX: SAVE TO TASK STACK:<br/>Push {r0-r12, LR}<br/>Push {RetAddr(LR_irq), SPSR}
+    
+    Note over CTX: 6. LOAD CONTEXT
+    Note right of CTX: SP = next->sp<br/>Pop {RetAddr, CPSR}<br/>Pop {r0-r12, LR}
+    end
+    
+    %% --- NO RETURN ---
+    Note over CTX,TASK: POINT OF NO RETURN
+    CTX->>TASK: MOVS PC, LR (Jump to Task)
+    
+    Note over TASK: 7. TASK RESUMES
+    Note right of TASK: Runs in SVC/User Mode<br/>Interrupts Re-enabled
+    
+    %% --- DEAD CODE VISUALIZATION ---
+    rect rgb(200, 200, 200)
+    Note over TIMER,SCHED: DEAD CODE ZONE<br/>(Instructions here are never reached)
+    end

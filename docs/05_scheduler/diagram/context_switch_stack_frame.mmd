@@ -1,0 +1,93 @@
+flowchart TD
+    %% =========================================
+    %% LAYOUT DEFINITIONS
+    %% =========================================
+    
+    %% --- ADDRESS SPACE ---
+    subgraph ADDRESS_SPACE ["MEMORY ADDRESS DIRECTION"]
+        direction TB
+        HighAddr[("High Address<br/>(Stack Base Direction)")]
+        LowAddr[("Low Address<br/>(Stack Limit Direction)")]
+        
+        HighAddr -.-> LowAddr
+    end
+
+    %% --- STACK FRAME STRUCTURE ---
+    subgraph STACK_FRAME ["TASK STACK FRAME (SVC Mode)"]
+        direction TB
+        
+        %% 1. Previous Stack Content
+        PREV_STACK["... Previous Stack Content ...<br/>(Local Vars / Call Frame)"]
+        
+        %% 2. The Context Block
+        subgraph CONTEXT_BLOCK ["SAVED CONTEXT BLOCK"]
+            direction TB
+            
+            %% Registers (General Purpose)
+            REG_LR["LR (Return Address / PC)"]
+            REG_GPR_HIGH["R12"]
+            REG_GPR_MID["... R11 through R1 ..."]
+            REG_GPR_LOW["R0"]
+            
+            %% Saved State (Label Updated)
+            REG_CPSR["Saved CPSR<br/>(Processor State)"]
+        end
+        
+        %% 3. Stack Pointer
+        SP_PTR["Current SP (Top of Stack)"]
+    end
+
+    %% --- TCB CONNECTION ---
+    subgraph KERNEL ["KERNEL REFERENCE"]
+        TCB_SP["TCB.sp"]
+    end
+    
+    %% --- IMPLEMENTATION NOTE (New) ---
+    NOTE["<b>NOTE:</b><br/>Exact memory layout depends<br/>on assembly PUSH order"]
+
+    %% =========================================
+    %% CONNECTIONS
+    %% =========================================
+    %% Address Flow
+    HighAddr ~~~ PREV_STACK
+    
+    %% Stack Growth
+    PREV_STACK --> REG_LR
+    REG_LR --- REG_GPR_HIGH --- REG_GPR_MID --- REG_GPR_LOW
+    REG_GPR_LOW --> REG_CPSR
+    REG_CPSR --> SP_PTR
+    SP_PTR ~~~ LowAddr
+
+    %% TCB Pointer Logic
+    TCB_SP -->|Points to Top of Stack| REG_CPSR
+    
+    %% Note Connection
+    CONTEXT_BLOCK -.- NOTE
+
+    %% =========================================
+    %% STYLING (Engineering Standard)
+    %% =========================================
+    %% Address Markers
+    style ADDRESS_SPACE fill:#fff,stroke:none
+    style HighAddr fill:#f8f9fa,stroke:#dee2e6,color:#6c757d
+    style LowAddr fill:#f8f9fa,stroke:#dee2e6,color:#6c757d
+
+    %% Stack Memory
+    style STACK_FRAME fill:#f8f9fa,stroke:#333,stroke-dasharray: 5 5
+    style PREV_STACK fill:#e9ecef,stroke:#adb5bd,stroke-dasharray: 2 2
+    
+    %% Context Block
+    style CONTEXT_BLOCK fill:#fff,stroke:#333,stroke-width:2px
+    style REG_LR fill:#d1e7dd,stroke:#198754
+    style REG_GPR_HIGH fill:#e2e3e5,stroke:#6c757d
+    style REG_GPR_MID fill:#e2e3e5,stroke:#6c757d
+    style REG_GPR_LOW fill:#e2e3e5,stroke:#6c757d
+    
+    %% Fixed Label Style
+    style REG_CPSR fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+    
+    %% Pointers & Notes
+    style SP_PTR fill:#f8d7da,stroke:#dc3545,color:#b02a37,stroke-width:2px
+    style KERNEL fill:#e9ecef,stroke:#333
+    style TCB_SP fill:#333,stroke:#000,color:#fff
+    style NOTE fill:#fff,stroke:#999,stroke-dasharray: 2 2

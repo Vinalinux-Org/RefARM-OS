@@ -1,0 +1,92 @@
+flowchart TD
+    %% =========================================
+    %% PHASE 1: CHECKS (Guard Clauses)
+    %% =========================================
+    subgraph CHECKS ["PHASE 1: GUARD CHECKS"]
+        direction TB
+        Start(["Timer ISR calls sched_tick"])
+        
+        CheckInit{"current_task is NULL?"}
+        CheckCount{"task_count <= 1?"}
+        
+        %% UPDATE 1: Làm rõ Return chỉ xảy ra khi không switch
+        ReturnNode(["Return to ISR<br/>(Scheduler Inactive - No Switch)"])
+    end
+
+    %% =========================================
+    %% PHASE 2: SCHEDULER LOGIC
+    %% =========================================
+    subgraph LOGIC ["PHASE 2: SCHEDULER LOGIC"]
+        direction TB
+        GetNext["1. Calculate Next Task<br/>(Round-Robin Index)"]
+        
+        %% UPDATE 2: Trừu tượng hóa việc cập nhật trạng thái
+        UpdateState["2. Update Task States<br/>(Prev: READY, Next: RUNNING)"]
+        
+        UpdateRef["3. Update Pointers<br/>(current = next)"]
+        
+        GetNext --> UpdateState --> UpdateRef
+    end
+
+    %% =========================================
+    %% PHASE 3: CRITICAL SWITCH
+    %% =========================================
+    subgraph SWITCH ["PHASE 3: CONTEXT SWITCH"]
+        direction TB
+        CtxSwitch[["context_switch(prev, next)"]]
+        
+        DeadEnd[/"NEVER RETURNS FROM HERE<br/>(CPU jumps to next task PC)"/]
+        
+        CtxSwitch --> DeadEnd
+    end
+
+    %% =========================================
+    %% PHASE 4: EXAMPLE (Visualization)
+    %% =========================================
+    subgraph EXAMPLE ["Round-Robin Visualization"]
+        direction LR
+        T0["Tick 0: Switch 0->1"] --> T1["Tick 1: Switch 1->2"] --> T2["Tick 2: Switch 2->0"]
+    end
+
+    %% =========================================
+    %% CONNECTIONS & FLOW
+    %% =========================================
+    Start --> CheckInit
+    
+    CheckInit -- Yes --> ReturnNode
+    CheckInit -- No --> CheckCount
+    
+    CheckCount -- Yes --> ReturnNode
+    CheckCount -- No --> GetNext
+
+    %% Nối các Phase
+    UpdateRef --> CtxSwitch
+
+    %% =========================================
+    %% STYLING (Engineering Standard)
+    %% =========================================
+    linkStyle default stroke:#666,stroke-width:2px,fill:none
+
+    %% Phase 1: Entry
+    style CHECKS fill:#f8f9fa,stroke:#dee2e6,color:#6c757d
+    style Start fill:#e2e3e5,stroke:#333,stroke-width:2px
+    style CheckInit fill:#fff3cd,stroke:#d6b656
+    style CheckCount fill:#fff3cd,stroke:#d6b656
+    style ReturnNode fill:#e9ecef,stroke:#adb5bd,stroke-dasharray: 5 5
+
+    %% Phase 2: Logic
+    style LOGIC fill:#ffffff,stroke:#ced4da,stroke-dasharray: 5 5
+    style GetNext fill:#f1f3f5,stroke:#ced4da
+    style UpdateState fill:#f1f3f5,stroke:#ced4da
+    style UpdateRef fill:#f1f3f5,stroke:#ced4da
+
+    %% Phase 3: Critical
+    style SWITCH fill:#fff5f5,stroke:#ffc9c9
+    style CtxSwitch fill:#d1e7dd,stroke:#198754,stroke-width:2px
+    style DeadEnd fill:#f8d7da,stroke:#dc3545,color:#b02a37,stroke-width:2px
+
+    %% Example
+    style EXAMPLE fill:#f8f9fa,stroke:none
+    style T0 fill:#fff,stroke:#ddd
+    style T1 fill:#fff,stroke:#ddd
+    style T2 fill:#fff,stroke:#ddd
