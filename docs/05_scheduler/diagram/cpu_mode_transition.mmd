@@ -1,0 +1,118 @@
+flowchart TD
+    %% =====================================================
+    %% 1. Normal task execution
+    %% =====================================================
+    subgraph SVC1["1. Task Execution (SVC mode)"]
+        T1["Task A running
+- CPU mode: SVC
+- Stack: Task A stack
+- PC: Task A code"]
+    end
+
+    %% =====================================================
+    %% 2. Hardware interrupt entry (ARM-defined)
+    %% =====================================================
+    subgraph HW_IRQ["2. Interrupt Entry (Hardware)"]
+        I1["Timer IRQ asserted"]
+        I2["ARM exception entry:
+- LR_irq ← PC + 4
+- SPSR_irq ← CPSR
+- CPSR.mode ← IRQ
+- CPSR.I ← 1
+- SP ← IRQ stack"]
+
+        I1 --> I2
+    end
+
+    %% =====================================================
+    %% 3. IRQ handling (kernel, IRQ mode)
+    %% =====================================================
+    subgraph IRQ_HANDLER["3. IRQ Handler (IRQ mode)"]
+        H1["vector_irq / exception_entry_irq"]
+        H2["irq_dispatch"]
+        H3["timer_isr
+- Ack timer
+- Complete EOI"]
+        H4["sched_tick
+- Evaluate scheduling decision"]
+
+        DECIDE{"Context switch needed?"}
+
+        H1 --> H2 --> H3 --> H4 --> DECIDE
+    end
+
+    %% =====================================================
+    %% 4. Context switch preparation
+    %% =====================================================
+    subgraph PREP["4. Context Switch Preparation"]
+        P1["Save exception return state
+(LR_irq, SPSR_irq)
+for later exception return"]
+
+        P2["🔄 Mode switch:
+CPS #0x13
+IRQ → SVC
+(select task stack)"]
+
+        P1 --> P2
+    end
+
+    %% =====================================================
+    %% 5. Task context switch (SVC mode)
+    %% =====================================================
+    subgraph CTX["5. Task Context Switch (SVC mode)"]
+        C1["Save Task A context
+(GPRs, SP_svc, LR_svc)"]
+        C2["Update TCB
+current->sp = SP_svc"]
+        C3["Load Task B context
+SP_svc = next->sp
+restore GPRs"]
+
+        C1 --> C2 --> C3
+    end
+
+    %% =====================================================
+    %% 6. Exception return (ARM-defined)
+    %% =====================================================
+    subgraph EX_RET["6. Exception Return"]
+        R1["Exception return instruction
+- CPSR ← SPSR_irq
+- PC ← LR_irq"]
+    end
+
+    %% =====================================================
+    %% 7. Next task execution
+    %% =====================================================
+    subgraph SVC2["7. Task Execution (SVC mode)"]
+        T2["Task B running
+- CPU mode: SVC
+- Stack: Task B stack
+- PC: Task B code"]
+    end
+
+    %% =====================================================
+    %% Flow connections
+    %% =====================================================
+    T1 --> I1
+    I2 --> H1
+    DECIDE -- No --> EX_RET
+    DECIDE -- Yes --> PREP
+    PREP --> CTX --> EX_RET
+    EX_RET --> T2
+    T2 -.->|"Next timer IRQ"| I1
+
+    %% =====================================================
+    %% Styling (reference-grade)
+    %% =====================================================
+    style SVC1 fill:#ccffcc,stroke:#333,stroke-width:3px
+    style SVC2 fill:#ccffcc,stroke:#333,stroke-width:3px
+
+    style HW_IRQ fill:#fff2cc,stroke:#333,stroke-width:3px
+    style IRQ_HANDLER fill:#fff2cc,stroke:#333,stroke-width:3px
+
+    style PREP fill:#ffcccc,stroke:#b02a37,stroke-width:3px
+    style CTX fill:#ccccff,stroke:#333,stroke-width:3px
+    style EX_RET fill:#e2e3e5,stroke:#333,stroke-width:3px
+
+    style P2 fill:#ff9999,stroke:#8b0000,stroke-width:4px
