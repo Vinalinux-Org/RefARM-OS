@@ -1,25 +1,82 @@
 /* ============================================================
  * main.c
  * ------------------------------------------------------------
- * RefARM-OS: Phase 7 - Two Task Context Switch Test
+ * RefARM-OS: Scheduler - Two Task Context Switch Test
  * Target: BeagleBone Black (AM335x)
  * ============================================================ */
 
 #include "uart.h"
 #include "watchdog.h"
-#include "intc.h"
-#include "irq.h"
-#include "cpu.h"
-#include "timer.h"
 #include "scheduler.h"
 #include "idle.h"
-#include "test_task.h"
+#include "timer.h"
+#include "irq.h"
+#include "intc.h"
+#include "shell.h"
+#include "task.h"
+#include <stdbool.h>
+
+/* ============================================================
+ * Test Task Logic (Integrated)
+ * ============================================================ */
+
+/* Test task stack (1KB) */
+#define TEST_STACK_SIZE 1024
+#define PRINT_INTERVAL 1000000
+static uint8_t test_stack[TEST_STACK_SIZE] __attribute__((aligned(8)));
+
+/* Test task structure */
+static struct task_struct test_task_struct;
+
+/**
+ * Test task entry point
+ */
+static void test_task(void)
+{
+    uint32_t counter = 0;
+    
+    uart_printf("[TEST] Test task started\n");
+    uart_printf("[TEST] Stack: 0x%08x - 0x%08x\n",
+                (uint32_t)&test_stack[0],
+                (uint32_t)&test_stack[TEST_STACK_SIZE]);
+    
+    /* Main test loop */
+    while (1) {
+        counter++;
+        
+        /* Print status periodically */
+        if (counter % PRINT_INTERVAL == 0) {
+            uart_printf("[TEST] Running... counter=%u\n", counter);
+        }
+        
+        /* 
+         * Check if scheduler wants us to yield
+         * This is the cooperative yield point
+         */
+        extern volatile bool need_reschedule;
+        if (need_reschedule) {
+            extern void scheduler_yield(void);
+            scheduler_yield();
+        }
+    }
+}
+
+/**
+ * Get test task structure
+ */
+static struct task_struct *create_test_task(void)
+{
+    test_task_struct.name = "test";
+    test_task_struct.state = TASK_STATE_READY;
+    test_task_struct.id = 0;
+    
+    task_stack_init(&test_task_struct, test_task, test_stack, TEST_STACK_SIZE);
+    
+    return &test_task_struct;
+}
 
 void kernel_main(void)
 {
-    struct task_struct *idle;
-    struct task_struct *test;
-    
     /* ========================================================
      * Phase 0: Early boot
      * ======================================================== */
@@ -36,54 +93,60 @@ void kernel_main(void)
     /* ========================================================
      * Phase 1: Interrupt subsystem
      * ======================================================== */
+    /* Initialize Interrupt Controller */
     uart_printf("[BOOT] Initializing INTC...\n");
     intc_init();
 
+    /* Initialize IRQ framework */
     uart_printf("[BOOT] Initializing IRQ framework...\n");
     irq_init();
 
-    uart_printf("[BOOT] Enabling UART RX interrupt...\n");
-    uart_enable_rx_interrupt();
-
-    uart_printf("[BOOT] Done.\n\n");
-
-    /* ========================================================
-     * Phase 2: Timer (for scheduler ticks)
-     * ======================================================== */
+    /* Initialize Hardware Timer */
     uart_printf("[BOOT] Initializing Timer...\n");
     timer_init();
-    uart_printf("[BOOT] Timer configured for 10ms ticks (100 Hz)\n\n");
-
-    /* ========================================================
-     * Phase 3: Scheduler
-     * ======================================================== */
+    
+    /* Initialize Scheduler */
     uart_printf("[BOOT] Initializing Scheduler...\n");
     scheduler_init();
-    
+
+    /* 
+     * NOTE: Idle task is created automatically by scheduler_init()
+     * We only need to add user/test tasks here.
+     * UPDATE: Manually adding idle task for now to ensure explicit registration.
+     */
     uart_printf("[BOOT] Creating idle task...\n");
-    idle = get_idle_task();
+    #include "idle.h" /* Typically at top, but allowed here for scope if needed, keeping simple */
+    /* Better to put include at top, will fix in next step if strict C, but simpler here: */
+    /* Wait, let's put include at top in separate edit or just implicit dec warning? */
+    /* Actually, let's just add the code and assume header is clean or add include at top. */
+    /* Strategy: I will add the include at the top in a separate edit to be clean. */
+    /* Here I just add the logic. */
     
-    uart_printf("[BOOT] Adding idle task to scheduler...\n");
-    scheduler_add_task(idle);
-    
-    uart_printf("\n[BOOT] Creating test task...\n");
-    test = get_test_task();
+    struct task_struct *idle_ptr = get_idle_task();
+    if (scheduler_add_task(idle_ptr) < 0) {
+        uart_printf("[BOOT] ERROR: Failed to add idle task\n");
+        while(1);
+    }
+
+    /* Create and add Test Task */
+    uart_printf("[BOOT] Creating test task...\n");
+    struct task_struct *t_task = create_test_task();
     
     uart_printf("[BOOT] Adding test task to scheduler...\n");
-    scheduler_add_task(test);
-    
-    uart_printf("\n[BOOT] Boot complete!\n");
+    if (scheduler_add_task(t_task) < 0) {
+        uart_printf("[BOOT] ERROR: Failed to add test task\n");
+        while(1);
+    }
+
+    uart_printf("[BOOT] Boot complete!\n");
     uart_printf("[BOOT] Total tasks: 2 (idle + test)\n");
     uart_printf("[BOOT] Time slice: 10ms per task\n");
     uart_printf("[BOOT] IRQs kept disabled (will enable on first task start)\n");
-    // irq_enable();  <-- REMOVED to fix race condition
-    
-    /* ========================================================
-     * Phase 4: Start Scheduler (NEVER RETURNS)
-     * ======================================================== */
-    uart_printf("[BOOT] Starting scheduler...\n\n");
+    uart_printf("[BOOT] Starting scheduler...\n");
+
+    /* Start Scheduler (Never Returns) */
     scheduler_start();
-    
+
     /* Should never reach here */
     uart_printf("[BOOT] FATAL: Returned from scheduler_start!\n");
     while (1);
