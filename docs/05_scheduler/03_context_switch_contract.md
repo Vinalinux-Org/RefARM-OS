@@ -29,59 +29,48 @@ Tài liệu này **không** mô tả:
 
 ### 2.2. Khi nào context switch xảy ra?
 
-Context switch xảy ra trong timer interrupt handler:
+Trong RefARM-OS (Phase 7.4+), chúng ta sử dụng **Cooperative Yield** mechanism để đảm bảo an toàn stack:
 
 ```
-Timer tick
+Timer tick (IRQ)
     ↓
-Timer ISR (IRQ mode)
+scheduler_tick() (Sets need_reschedule = true)
     ↓
-sched_tick() (C code)
+Return to Task (IRQ exit)
+    ↓
+Task Loop checks flag
+    ↓
+scheduler_yield() (SVC mode)
     ↓
 context_switch() (assembly)
-    ↓
-Return to next task (SVC mode)
 ```
 
 **Quan trọng:**
-- Context switch **chỉ** xảy ra trong timer ISR
-- CPU đang ở IRQ mode khi gọi context_switch()
-- Sau context switch, CPU trở về SVC mode (task mode)
+- Context switch **KHÔNG** xảy ra trong timer ISR (IRQ mode)
+- Scheduler chỉ set flag báo hiệu
+- Task tự nguyện yield khi check thấy flag
+- Context switch chạy hoàn toàn trong **SVC mode** (Task context)
 
-### 2.3. CRITICAL: CPU Mode vs Execution Context
+### 2.3. CPU Mode Strategy
 
-**Phân biệt rõ ràng:**
+**Tại sao không switch trong ISR?**
+- IRQ mode dùng chung IRQ Stack.
+- Nested interrupts hoặc complex dependency trong IRQ handler dễ gây stack corruption.
+- Việc switch mode từ IRQ -> SVC rồi save stack phức tạp và rủi ro (đã gây Data Abort ở Phase 7.3).
 
-```
-┌─────────────────────────────────────────────┐
-│ Timer ISR (IRQ mode, IRQ stack)             │
-│   - Clear interrupt                         │
-│   - Call sched_tick()                       │
-│   - Call context_switch()                   │
-│     └─> Switch CPU to SVC mode ◄─── ĐÂY    │
-└─────────────────────────────────────────────┘
-                    ↓
-┌─────────────────────────────────────────────┐
-│ Task continues (SVC mode, TASK STACK)       │
-│   - Registers restored từ task context     │
-│   - Stack = task's own stack               │
-│   - NOT interrupt stack                    │
-└─────────────────────────────────────────────┘
-```
-
-**Key points người mới hay nhầm:**
-- Context switch CODE chạy trong IRQ context (IRQ mode, IRQ stack)
-- Nhưng task SAU SWITCH chạy ở SVC mode với task's own stack
-- IRQ stack chỉ dùng trong timer_isr + sched_tick + context_switch entry
-- Task KHÔNG "chạy trong interrupt" - task chạy ở SVC mode bình thường
+**New Strategy:**
+- **Cooperative Yield in SVC Mode**:
+    - Task đang chạy ở SVC mode, dùng Task Stack riêng.
+    - Khi gọi `scheduler_yield`, ta vẫn ở SVC mode.
+    - `context_switch` chỉ cần save/restore registers trên stack hiện tại.
+    - Rất an toàn và đơn giản hóa assembly code.
 
 ### 2.4. Tại sao cần assembly?
 
 Context switch **phải** viết bằng assembly vì:
 - Cần manipulate tất cả CPU registers trực tiếp
-- Cần switch CPU mode (IRQ → SVC)
-- Cần restore CPSR và PC atomically
-- C compiler không thể generate code cho các operations này
+- Cần save/restore `callee-saved` registers chính xác
+- Ccompiler không thể generate code cho full context swap
 
 ---
 
@@ -257,41 +246,73 @@ struct task_context {
 
 ### 6.1. context_switch() pseudocode
 
+**CRITICAL:** Pseudocode dưới đây based on ARM Architecture Manual Part B (Exception Handling).
+
+### 6.1. context_switch() pseudocode
+
+**Note:** simplified for Cooperative Yield (SVC Mode call).
+
 ```assembly
 context_switch:
+    ; At entry:
+    ; - We are in SVC mode (called from task via scheduler_yield)
+    ; - r0 = current task pointer
+    ; - r1 = next task pointer
+    ; - SP is Task Stack Pointer (r13_svc)
+    
     ; ===== SAVE CURRENT TASK =====
     
-    ; 1. Switch to SVC mode (task mode) temporarily
-    ;    để access task's stack
-    cps  #0x13              ; Switch to SVC mode
+    ; 1. Save Callee-Saved Registers (r4-r11, lr)
+    ;    ARM calling convention requires preserving these.
+    ;    We push them to Task Stack.
+    stmfd sp!, {r4-r11, lr}
     
-    ; 2. Save all registers on current task's stack
-    push {r0-r12, lr}
-    
-    ; 3. Save CPSR
-    mrs  r0, cpsr
-    push {r0}
-    
-    ; 4. Save SP into current->context.sp
-    ;    (current pointer vẫn còn trong register từ C call)
-    mov  r1, sp
-    str  r1, [r0, #OFFSET_CONTEXT_SP]
-    
-    ; 5. Copy stack frame vào current->context
-    ;    (implementation-specific)
+    ; 2. Save current SP to task struct
+    str sp, [r0]        ; current->context.sp = sp
     
     ; ===== LOAD NEXT TASK =====
     
-    ; 6. Load next task's SP
-    ldr  sp, [r1, #OFFSET_CONTEXT_SP]
+    ; 3. Load next task's SP
+    ldr sp, [r1]        ; sp = next->context.sp
     
-    ; 7. Restore CPSR
-    pop  {r0}
-    msr  cpsr, r0
+    ; 4. Restore Callee-Saved Registers
+    ldmfd sp!, {r4-r11, lr}
     
-    ; 8. Restore all registers
-    pop  {r0-r12, pc}       ; PC restored từ saved LR
+    ; 5. Return to caller (scheduler_yield of next task)
+    mov pc, lr
 ```
+
+**Giải thích:**
+- **Không cần Save R0-R3, R12:** Đây là *Caller-Saved* registers. Function `context_switch` được gọi như một hàm C bình thường (`scheduler_yield` gọi nó). Compiler đã tự lo việc save/restore R0-R3 nếu cần thiết trước khi gọi.
+- **Không cần Mode Switch:** Vì đang ở SVC mode, ta dùng trực tiếp `SP_svc`.
+- **Không cần SPSR:** Ta không return từ exception, chỉ là function call jump. Interrupt state (CPSR I-bit) được giữ nguyên hoặc quản lý bởi caller.
+
+**Giải thích các bước:**
+
+1. **Mode switch (MSR cpsr_c, #0xD3):**
+   - Switch từ IRQ mode (0x12) → SVC mode (0x13)
+   - Disable IRQ (bit I=1) để prevent nested interrupts
+   - Dùng MSR thay vì CPS vì an toàn hơn trong exception context
+
+2. **Save GPRs + LR + SPSR:**
+   - STMFD = Store Multiple Full Descending (push onto stack)
+   - Thứ tự: r0-r12, lr, spsr (từ low → high address)
+   - Stack grows DOWN (sp decrements)
+
+3. **SPSR vs CPSR:**
+   - SPSR_irq chứa CPSR của task TRƯỚC KHI interrupt
+   - MRS spsr đọc SPSR của current mode (IRQ mode's SPSR)
+   - MSR spsr_cxsf ghi SPSR (c=control, x=extension, s=status, f=flags)
+
+4. **Memory barrier (DSB):**
+   - Ensures mọi memory writes (stack push) complete
+   - Critical trên Cortex-A8 với write buffer
+
+5. **MOVS PC, LR:**
+   - 'S' suffix makes it **privileged** return
+   - Atomic: PC ← LR AND CPSR ← SPSR
+   - Task resumes với CPSR restored
+
 
 ### 6.2. start_first_task() pseudocode
 

@@ -29,77 +29,52 @@ flowchart TD
     %% =====================================================
     subgraph IRQ_HANDLER["3. IRQ Handler (IRQ mode)"]
         H1["vector_irq / exception_entry_irq"]
-        H2["irq_dispatch"]
-        H3["timer_isr
-- Ack timer
-- Complete EOI"]
-        H4["sched_tick
-- Evaluate scheduling decision"]
-
-        DECIDE{"Context switch needed?"}
-
-        H1 --> H2 --> H3 --> H4 --> DECIDE
+        H2["irq_dispatch -> timer_isr"]
+        H3["scheduler_tick (Set Flag)"]
+        
+        H1 --> H2 --> H3
     end
 
     %% =====================================================
-    %% 4. Context switch preparation
+    %% 4. Exception return (Back to Task)
     %% =====================================================
-    subgraph PREP["4. Context Switch Preparation"]
-        P1["Save exception return state
-(LR_irq, SPSR_irq)
-for later exception return"]
+    subgraph EX_RET["4. Exception Return"]
+        R1["MOVS PC, LR
+(Return to interrupted Task)"]
+    end
+    
+    H3 --> EX_RET
 
-        P2["🔄 Mode switch:
-CPS #0x13
-IRQ → SVC
-(select task stack)"]
+    %% =====================================================
+    %% 5. Task Yield Decision (SVC mode)
+    %% =====================================================
+    subgraph YIELD["5. Task Yield Decision (SVC mode)"]
+        Y1["Task Check Flag
+(need_reschedule?)"]
+        Y2["scheduler_yield()"]
+        
+        Y1 -- Yes --> Y2
+        Y1 -- No  --> T1
+    end
+    
+    EX_RET --> Y1
 
-        P1 --> P2
+    %% =====================================================
+    %% 6. Context Switch (SVC mode)
+    %% =====================================================
+    subgraph CTX["6. Context Switch (SVC mode)"]
+        C1["Save Callee-Saved Registers
+(r4-r11, lr)"]
+        C2["Update TCB (sp)"]
+        C3["Load Next Task TCB (sp)"]
+        C4["Restore Callee-Saved
+(r4-r11, lr)"]
+        
+        C1 --> C2 --> C3 --> C4
     end
 
-    %% =====================================================
-    %% 5. Task context switch (SVC mode)
-    %% =====================================================
-    subgraph CTX["5. Task Context Switch (SVC mode)"]
-        C1["Save Task A context
-(GPRs, SP_svc, LR_svc)"]
-        C2["Update TCB
-current->sp = SP_svc"]
-        C3["Load Task B context
-SP_svc = next->sp
-restore GPRs"]
-
-        C1 --> C2 --> C3
-    end
-
-    %% =====================================================
-    %% 6. Exception return (ARM-defined)
-    %% =====================================================
-    subgraph EX_RET["6. Exception Return"]
-        R1["Exception return instruction
-- CPSR ← SPSR_irq
-- PC ← LR_irq"]
-    end
-
-    %% =====================================================
-    %% 7. Next task execution
-    %% =====================================================
-    subgraph SVC2["7. Task Execution (SVC mode)"]
-        T2["Task B running
-- CPU mode: SVC
-- Stack: Task B stack
-- PC: Task B code"]
-    end
-
-    %% =====================================================
-    %% Flow connections
-    %% =====================================================
-    T1 --> I1
-    I2 --> H1
-    DECIDE -- No --> EX_RET
-    DECIDE -- Yes --> PREP
-    PREP --> CTX --> EX_RET
-    EX_RET --> T2
+    Y2 --> CTX
+    CTX --> T2
     T2 -.->|"Next timer IRQ"| I1
 
     %% =====================================================

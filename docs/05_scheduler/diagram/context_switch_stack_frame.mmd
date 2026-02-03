@@ -23,14 +23,14 @@ flowchart TD
         subgraph CONTEXT_BLOCK ["SAVED CONTEXT BLOCK"]
             direction TB
             
-            %% Registers (General Purpose)
-            REG_LR["LR (Return Address / PC)"]
-            REG_GPR_HIGH["R12"]
-            REG_GPR_MID["... R11 through R1 ..."]
-            REG_GPR_LOW["R0"]
+            %% Registers (Callee-Saved)
+            REG_LR["LR (Return Address)"]
+            REG_GPR_HIGH["R11 (FP)"]
+            REG_GPR_MID["... R10 through R5 ..."]
+            REG_GPR_LOW["R4"]
             
-            %% Saved State (Label Updated)
-            REG_CPSR["Saved CPSR<br/>(Processor State)"]
+            %% Note: No generic R0-R3 or CPSR needed
+            %% Just standard function call frame
         end
         
         %% 3. Stack Pointer
@@ -54,12 +54,11 @@ flowchart TD
     %% Stack Growth
     PREV_STACK --> REG_LR
     REG_LR --- REG_GPR_HIGH --- REG_GPR_MID --- REG_GPR_LOW
-    REG_GPR_LOW --> REG_CPSR
-    REG_CPSR --> SP_PTR
+    REG_GPR_LOW --> SP_PTR
     SP_PTR ~~~ LowAddr
 
     %% TCB Pointer Logic
-    TCB_SP -->|Points to Top of Stack| REG_CPSR
+    TCB_SP -->|Points to Top of Stack| REG_GPR_LOW
     
     %% Note Connection
     CONTEXT_BLOCK -.- NOTE
