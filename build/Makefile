@@ -18,8 +18,8 @@ C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.
 C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/intc.c $(SRC)/drivers/timer.c
 
 # Objects
-ASM_OBJ = vectors.o reset.o entry.o exception_entry.o
-C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o
+ASM_OBJ = vectors.o reset.o entry.o exception_entry.o context_switch.o
+C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -52,6 +52,10 @@ vectors.o: $(SRC)/arch/arm/exceptions/vectors.S
 exception_entry.o: $(SRC)/arch/arm/exceptions/exception_entry.S
 	$(CC) $(ASFLAGS) -c $< -o $@
 
+# Assembly files - Scheduler
+context_switch.o: $(SRC)/arch/arm/scheduler/context_switch.S
+	$(CC) $(ASFLAGS) -c $< -o $@
+
 # C files - Kernel
 main.o: $(SRC)/kernel/main.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -66,6 +70,15 @@ shell.o: $(SRC)/kernel/shell/shell.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 commands.o: $(SRC)/kernel/shell/commands.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+scheduler.o: $(SRC)/kernel/scheduler/scheduler.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+task.o: $(SRC)/kernel/scheduler/task.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+idle.o: $(SRC)/kernel/scheduler/idle.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # C files - Drivers

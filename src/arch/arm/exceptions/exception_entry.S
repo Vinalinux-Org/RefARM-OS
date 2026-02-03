@@ -184,6 +184,22 @@ exception_entry_data_abort:
  * 4. Restores context
  * 5. Returns from exception
  * ============================================================ */
+/* ============================================================
+ * IRQ Exception Entry (SRS/RFE Model)
+ * ------------------------------------------------------------
+ * Entered in: IRQ mode
+ * LR_irq = address of next instruction + 4
+ * SPSR_irq = CPSR before exception
+ * 
+ * This stub:
+ * 1. Adjusts LR (LR-4)
+ * 2. Saves LR, SPSR to SVC stack using SRSDB
+ * 3. Switches to SVC mode
+ * 4. Saves GPRs to SVC stack
+ * 5. Calls handler
+ * 6. Restores GPRs
+ * 7. Returns using RFE (from SVC stack)
+ * ============================================================ */
 exception_entry_irq:
     /*
      * CRITICAL: Adjust return address FIRST
