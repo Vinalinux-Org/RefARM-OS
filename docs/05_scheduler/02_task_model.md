@@ -97,10 +97,24 @@ READY ----------------------> RUNNING
 
 Task structure phải lưu trữ toàn bộ CPU state để có thể restore khi task được chọn lại.
 
+**Theo ARM Architecture Manual Part B (Exception Handling):**
+
+Khi IRQ xảy ra (timer interrupt):
+- Hardware tự động save `CPSR → SPSR_irq`  
+- Hardware tự động save `PC → LR_irq` (với offset)
+- Processor switch sang IRQ mode (banked r13_irq, r14_irq)
+
+Context switch phải save/restore:
+- **r0-r12**: General purpose registers (shared across modes)
+- **SP (r13_svc)**: Task's stack pointer trong SVC mode
+- **LR (r14_svc)**: Task's link register trong SVC mode  
+- **SPSR**: Saved Program Status Register (task's CPSR frozen at interrupt point)
+
 **Các registers cần lưu:**
 
 ```c
 struct task_context {
+    /* General purpose registers (13 registers) */
     uint32_t r0;
     uint32_t r1;
     uint32_t r2;
@@ -114,11 +128,35 @@ struct task_context {
     uint32_t r10;
     uint32_t r11;
     uint32_t r12;
-    uint32_t sp;      // Stack pointer
-    uint32_t lr;      // Link register (return address)
-    uint32_t pc;      // Program counter
-    uint32_t cpsr;    // CPSR (cần lưu cho mode và flags)
+    
+    /* Mode-specific registers (SVC mode) */
+    uint32_t sp;      // r13_svc: Task's stack pointer
+    uint32_t lr;      // r14_svc: Task's link register (return address)
+    
+    /* Processor state */
+    uint32_t spsr;    // Saved Program Status Register (contains mode, flags, IRQ enable)
+    
+    // NOTE: PC is NOT saved separately
+    // For interrupted tasks: PC is in LR_irq (handled by exception entry)
+    // For new tasks: PC is in initial stack frame (loaded by RFE instruction)
 };
+```
+
+**Giải thích SPSR vs CPSR:**
+
+- **CPSR** (Current Program Status Register):  
+  Current state của processor - mode bits, condition flags, IRQ enable, etc.
+  
+- **SPSR** (Saved Program Status Register):  
+  Snapshot của CPSR **trước khi** exception xảy ra.  
+  Mỗi exception mode có SPSR riêng: SPSR_irq, SPSR_fiq, SPSR_svc, etc.
+
+Khi timer IRQ xảy ra:
+```
+1. Hardware: CPSR → SPSR_irq (save task's state)
+2. Hardware: Set CPSR.M = IRQ mode (0b10010)
+3. Hardware: Set CPSR.I = 1 (disable IRQ)
+4. Context switch: Must save SPSR_irq to restore task's CPSR later
 ```
 
 **Lưu ý về thứ tự fields:**

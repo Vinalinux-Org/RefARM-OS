@@ -30,6 +30,7 @@ Timer interrupt đóng vai trò **trigger mechanism** cho scheduler:
 - Timer cung cấp periodic interrupt với interval cố định
 
 **Flow tổng thể:**
+**Flow tổng thể (Phase 7.4+):**
 ```
 DMTimer2 overflow (10ms)
     ↓
@@ -41,11 +42,13 @@ irq_dispatch (kernel IRQ core)
     ↓
 timer_isr (driver)
     ↓
-sched_tick (scheduler)
+scheduler_tick (Sets flag, returns)
     ↓
-context_switch (assembly)
+irq_dispatch (Perform EOI)
     ↓
-Next task continues
+Task resumes (SVC) checks flag
+    ↓
+scheduler_yield (calls context_switch)
 ```
 
 ### 2.2. Timer tick period
@@ -108,74 +111,294 @@ Bit [2] TCAR_IT_FLAG: Capture interrupt (not used)
 
 ## 4. Timer Configuration
 
+
 ### 4.1. Clock enable - CRITICAL FIX
 
 **BUG trong timer driver hiện tại:**
 - Timer driver thiếu bước enable clock cho DMTimer2
 - Trên real hardware → register access hang
 
-**Pattern từ uart.c (correct):**
+**Theo AM335x TRM Chapter 8 (Clock Management):**
+
+Clock enable cho DMTimer2 cần nhiều bước hơn UART:
+
+1. **Ensure L4LS clock domain awake** (UART không cần vì default awake)
+2. **Enable module clock** với MODULEMODE = 0x2
+3. **Poll IDLEST AND MODULEMODE** (không chỉ IDLEST)
+4. **Soft reset module** (recommended)
+5. **Configure posted mode** (nếu OCP clock ≠ functional clock)
+
 ```c
-// Enable UART0 clock
-mmio_write32(CM_PER_UART0_CLKCTRL, 0x2);
+#define CM_PER_BASE             0x44E00000
+#define CM_PER_L4LS_CLKSTCTRL   (CM_PER_BASE + 0x00)
+#define CM_PER_TIMER2_CLKCTRL   (CM_PER_BASE + 0x80)
 
-// Wait for module to be fully functional
-while ((mmio_read32(CM_PER_UART0_CLKCTRL) & 0x30000) != 0);
-```
+/* TRM Table 8-24: CLKTRCTRL field values */
+#define CLKTRCTRL_SW_WKUP       0x2  /* Force wakeup */
 
-**Phải apply cho DMTimer2:**
-```c
-#define CM_PER_BASE           0x44E00000
-#define CM_PER_TIMER2_CLKCTRL (CM_PER_BASE + 0x80)
+/* TRM Table 8-176: MODULEMODE field values */
+#define MODULEMODE_ENABLE       0x2  /* Module explicitly enabled */
 
-void timer_enable_clock(void) {
-    // Enable DMTimer2 module clock
-    mmio_write32(CM_PER_TIMER2_CLKCTRL, 0x2);
+/* TRM Table 8-176: IDLEST field values */
+#define IDLEST_FUNC             0x0  /* Fully functional */
+#define IDLEST_SHIFT            16
+
+void timer2_clock_enable(void)  
+{
+    uint32_t val;
     
-    // Wait for IDLEST bits to indicate module is functional
-    // IDLEST is bits [17:16]
-    // 0x0 = Fully functional
-    while ((mmio_read32(CM_PER_TIMER2_CLKCTRL) & 0x30000) != 0) {
-        // Busy wait
+    uart_printf("[TIMER] Enabling Timer2 clock...\n");
+    
+    /* 
+     * Step 1: Ensure L4LS clock domain is awake
+     * TRM Section 8.1.12.1.23: CM_PER_L4LS_CLKSTCTRL
+     */
+    val = mmio_read32(CM_PER_L4LS_CLKSTCTRL);
+    uart_printf("  L4LS_CLKSTCTRL (before) = 0x%08x\n", val);
+    
+    if ((val & 0x3) != CLKTRCTRL_SW_WKUP) {
+        uart_printf("  L4LS domain not awake, forcing wakeup...\n");
+        mmio_write32(CM_PER_L4LS_CLKSTCTRL, CLKTRCTRL_SW_WKUP);
+        
+        /* Wait for domain transition to awake */
+        while ((mmio_read32(CM_PER_L4LS_CLKSTCTRL) & 0x3) != CLKTRCTRL_SW_WKUP);
+        uart_printf("  L4LS domain now awake\n");
     }
+    
+    /* 
+     * Step 2: Enable Timer2 module clock
+     * TRM Section 8.1.12.1.58: CM_PER_TIMER2_CLKCTRL
+     * 
+     * MODULEMODE[1:0] = 0x2 (ENABLE)
+     */
+    val = mmio_read32(CM_PER_TIMER2_CLKCTRL);
+    uart_printf("  TIMER2_CLKCTRL (before) = 0x%08x\n", val);
+    
+    mmio_write32(CM_PER_TIMER2_CLKCTRL, MODULEMODE_ENABLE);
+    
+    /* 
+     * Step 3: Wait for module fully functional
+     * Must check BOTH IDLEST and MODULEMODE
+     * 
+     * IDLEST[17:16] = 0x0 (Fully functional, not in transition)
+     * MODULEMODE[1:0] = 0x2 (Enabled - readback verification)
+     */
+    uart_printf("  Waiting for IDLEST = FUNCTIONAL...\n");
+    
+    uint32_t timeout = 100000;
+    while (timeout--) {
+        val = mmio_read32(CM_PER_TIMER2_CLKCTRL);
+        
+        uint32_t idlest = (val >> IDLEST_SHIFT) & 0x3;
+        uint32_t modulemode = val & 0x3;
+        
+        if (idlest == IDLEST_FUNC && modulemode == MODULEMODE_ENABLE) {
+            uart_printf("  Timer2 clock fully functional\n");
+            uart_printf("  TIMER2_CLKCTRL (after) = 0x%08x\n", val);
+            return;
+        }
+    }
+    
+    /* Timeout - critical error */
+    uart_printf("  [ERROR] Timer2 clock enable timeout!\n");
+    uart_printf("  TIMER2_CLKCTRL = 0x%08x\n", mmio_read32(CM_PER_TIMER2_CLKCTRL));
+    while (1);  /* Halt */
 }
 ```
 
-**Gọi trong timer_init() TRƯỚC KHI access timer registers:**
+**Pattern từ uart.c (incomplete - chỉ check IDLEST):**
 ```c
-void timer_init(void) {
-    // 1. Enable clock FIRST
-    timer_enable_clock();
-    
-    // 2. Now safe to access timer registers
-    mmio_write32(TIMER2_TCLR, 0);  // Stop timer
-    // ...
-}
+// UART pattern - works but không đủ cho Timer
+mmio_write32(CM_PER_UART0_CLKCTRL, 0x2);
+while ((mmio_read32(CM_PER_UART0_CLKCTRL) & 0x30000) != 0);
+// ↑ Chỉ check IDLEST[17:16] = 0
+// Không check MODULEMODE readback
+// Không check L4LS domain (UART OK vì domain default awake)
 ```
+
+
 
 ### 4.2. Timer initialization sequence
 
+**Theo AM335x TRM Chapter 20 (DMTimer):**
+
+Complete init sequence bao gồm:
+1. Clock enable (đã có ở trên)
+2. **Soft reset** (recommended)
+3. **Posted mode configuration** (critical nếu OCP_CLK ≠ TIMER_CLK)
+4. Stop timer
+5. Clear pending interrupts
+6. Configure reload value
+7. Enable overflow interrupt
+8. Configure auto-reload mode
+
 ```c
-void timer_init(void) {
-    // 1. Enable clock (CRITICAL - must be first)
-    timer_enable_clock();
+/* DMTimer2 register offsets - TRM Table 20-3 */
+#define TIMER2_TIDR         (DMTIMER2_BASE + 0x00)
+#define TIMER2_TIOCP_CFG    (DMTIMER2_BASE + 0x10)
+#define TIMER2_TISTAT       (DMTIMER2_BASE + 0x14)
+#define TIMER2_TISR         (DMTIMER2_BASE + 0x18)
+#define TIMER2_TIER         (DMTIMER2_BASE + 0x1C)
+#define TIMER2_TWER         (DMTIMER2_BASE + 0x20)
+#define TIMER2_TCLR         (DMTIMER2_BASE + 0x24)
+#define TIMER2_TCRR         (DMTIMER2_BASE + 0x28)
+#define TIMER2_TLDR         (DMTIMER2_BASE + 0x2C)
+#define TIMER2_TTGR         (DMTIMER2_BASE + 0x30)
+#define TIMER2_TWPS         (DMTIMER2_BASE + 0x34)
+#define TIMER2_TMAR         (DMTIMER2_BASE + 0x38)
+#define TIMER2_TCAR1        (DMTIMER2_BASE + 0x3C)
+#define TIMER2_TSICR        (DMTIMER2_BASE + 0x40)
+#define TIMER2_TCAR2        (DMTIMER2_BASE + 0x44)
+#define TIMER2_TPIR         (DMTIMER2_BASE + 0x48)
+#define TIMER2_TNIR         (DMTIMER2_BASE + 0x4C)
+#define TIMER2_TCVR         (DMTIMER2_BASE + 0x50)
+#define TIMER2_TOCR         (DMTIMER2_BASE + 0x54)
+#define TIMER2_TOWR         (DMTIMER2_BASE + 0x58)
+#define TIMER2_IRQSTATUS_RAW    (DMTIMER2_BASE + 0x24)  /* Duplicate addr - raw */
+#define TIMER2_IRQSTATUS        (DMTIMER2_BASE + 0x28)  /* Status after mask */
+#define TIMER2_IRQENABLE_SET    (DMTIMER2_BASE + 0x2C)
+#define TIMER2_IRQENABLE_CLR    (DMTIMER2_BASE + 0x30)
+
+/* TIOCP_CFG bits - TRM Section 20.1.4.1 */
+#define TIOCP_SOFTRESET     (1 << 0)
+
+/* TISTAT bits - TRM Section 20.1.4.2 */
+#define TISTAT_RESETDONE    (1 << 0)
+
+/* TSICR bits - TRM Section 20.1.4.15 */
+#define TSICR_POSTED        (1 << 2)
+
+/* TWPS bits - TRM Section 20.1.4.12 */
+#define TWPS_W_PEND_TCLR    (1 << 0)
+#define TWPS_W_PEND_TCRR    (1 << 1)
+#define TWPS_W_PEND_TLDR    (1 << 2)
+#define TWPS_W_PEND_TTGR    (1 << 3)
+#define TWPS_W_PEND_TMAR    (1 << 4)
+
+/* IRQSTATUS bits */
+#define IRQ_MAT_IT_FLAG     (1 << 0)
+#define IRQ_OVF_IT_FLAG     (1 << 1)
+#define IRQ_TCAR_IT_FLAG    (1 << 2)
+
+/* TCLR bits */
+#define TCLR_ST             (1 << 0)  /* Start */
+#define TCLR_AR             (1 << 1)  /* Auto-reload */
+
+void timer_init(void) 
+{
+    uart_printf("[TIMER] Initializing DMTimer2...\n");
     
-    // 2. Stop timer
+    /* 
+     * Step 0: Enable clock (CRITICAL - must be first)
+     * See section 4.1 above
+     */
+    timer2_clock_enable();
+    
+    /* 
+     * Step 1: Soft reset
+     * TRM Section 20.1.4.1: TIOCP_CFG
+     * Ensures clean state after power-on or previous use
+     */
+    uart_printf("[TIMER] Performing soft reset...\n");
+    mmio_write32(TIMER2_TIOCP_CFG, TIOCP_SOFTRESET);
+    
+    /* Wait for reset done - TRM Section 20.1.4.2: TISTAT */
+    uint32_t timeout = 10000;
+    while (!(mmio_read32(TIMER2_TISTAT) & TISTAT_RESETDONE) && timeout--);
+    
+    if (!timeout) {
+        uart_printf("  [ERROR] Timer soft reset timeout!\n");
+        while (1);
+    }
+    uart_printf("  Soft reset complete\n");
+    
+    /* 
+     * Step 2: Configure posted mode
+     * TRM Section 20.1.4.15: TSICR
+     * 
+     * Posted mode = ON means writes buffered, must poll TWPS
+     * Posted mode = OFF means writes direct, slower but simpler
+     * 
+     * For scheduler: Use POSTED=1, poll TWPS for critical writes
+     */
+    uart_printf("[TIMER] Configuring posted mode...\n");
+    mmio_write32(TIMER2_TSICR, TSICR_POSTED);
+    uart_printf("  Posted mode enabled (writes buffered)\n");
+    
+    /* 
+     * Step 3: Stop timer
+     * Must wait for W_PEND_TCLR if posted mode enabled
+     */
+    uart_printf("[TIMER] Stopping timer...\n");
     mmio_write32(TIMER2_TCLR, 0);
     
-    // 3. Set reload value for 10ms @ 24MHz
-    // Period = (0xFFFFFFFF - TLDR + 1) / 24MHz
-    // For 10ms: count = 24MHz * 0.01 = 240000
-    uint32_t reload = 0xFFFFFFFF - 240000 + 1;
+    /* Poll TWPS to ensure write completed */
+    timeout = 10000;
+    while ((mmio_read32(TIMER2_TWPS) & TWPS_W_PEND_TCLR) && timeout--);
+    if (!timeout) {
+        uart_printf("  [WARN] TCLR write timeout\n");
+    }
+    
+    /* 
+     * Step 4: Clear all pending interrupts
+     * TRM Section 20.1.4.8: Write 1 to clear
+     */
+    uart_printf("[TIMER] Clearing interrupts...\n");
+    mmio_write32(TIMER2_IRQSTATUS, 0x7);  /* Clear all 3 interrupt flags */
+    
+    /* 
+     * Step 5: Configure reload value for 10ms @ 24MHz
+     * 
+     * Timer counts UP from TLDR to 0xFFFFFFFF, then overflows
+     * Period = (0xFFFFFFFF - TLDR + 1) / FCLK
+     * 
+     * For 10ms @ 24MHz:
+     *   Count = 24,000,000 * 0.01 = 240,000 (0x3A980)
+     *   TLDR = 0xFFFFFFFF - 240,000 + 1 = 0xFFFC5680
+     */
+    uint32_t freq = 24000000;      /* 24 MHz functional clock */
+    uint32_t period_ms = 10;       /* 10ms scheduler tick */
+    uint32_t count = (freq / 1000) * period_ms;
+    uint32_t reload = 0xFFFFFFFF - count + 1;
+    
+    uart_printf("[TIMER] Configuring %ums period...\n", period_ms);
+    uart_printf("  FCLK = %u Hz\n", freq);
+    uart_printf("  Count = %u (0x%x)\n", count, count);
+    uart_printf("  Reload = 0x%08x\n", reload);
+    
+    /* Set TLDR (load register) */
     mmio_write32(TIMER2_TLDR, reload);
-    mmio_write32(TIMER2_TCRR, reload);  // Initial counter value
+    timeout = 10000;
+    while ((mmio_read32(TIMER2_TWPS) & TWPS_W_PEND_TLDR) && timeout--);
     
-    // 4. Enable overflow interrupt
-    mmio_write32(TIMER2_IRQENABLE_SET, 0x2);  // OVF_IT_FLAG
+    /* Set TCRR (counter register) to initial value */
+    mmio_write32(TIMER2_TCRR, reload);
+    timeout = 10000;
+    while ((mmio_read32(TIMER2_TWPS) & TWPS_W_PEND_TCRR) && timeout--);
     
-    // 5. Configure timer control
-    // AR=1 (auto-reload), ST=0 (stopped, will start later)
-    mmio_write32(TIMER2_TCLR, 0x2);
+    /* 
+     * Step 6: Enable overflow interrupt
+     * TRM Section 20.1.4.9: IRQENABLE_SET
+     */
+    uart_printf("[TIMER] Enabling overflow interrupt...\n");
+    mmio_write32(TIMER2_IRQENABLE_SET, IRQ_OVF_IT_FLAG);
+    
+    /* 
+     * Step 7: Configure timer control (auto-reload, not started yet)
+     * AR=1: Auto-reload from TLDR on overflow
+     * ST=0: Timer stopped (will start later with timer_start())
+     */
+    uart_printf("[TIMER] Configuring auto-reload mode...\n");
+    mmio_write32(TIMER2_TCLR, TCLR_AR);  /* AR=1, ST=0 */
+    timeout = 10000;
+    while ((mmio_read32(TIMER2_TWPS) & TWPS_W_PEND_TCLR) && timeout--);
+    
+    uart_printf("[TIMER] Initialization complete (timer stopped)\n");
+    uart_printf("  TIOCP_CFG = 0x%08x\n", mmio_read32(TIMER2_TIOCP_CFG));
+    uart_printf("  TSICR = 0x%08x\n", mmio_read32(TIMER2_TSICR));
+    uart_printf("  TCLR = 0x%08x\n", mmio_read32(TIMER2_TCLR));
+    uart_printf("  TLDR = 0x%08x\n", mmio_read32(TIMER2_TLDR));
+    uart_printf("  TCRR = 0x%08x\n", mmio_read32(TIMER2_TCRR));
 }
 ```
 
@@ -245,21 +468,20 @@ void timer_isr(void) {
     // 1. Clear interrupt at peripheral (MUST be first)
     mmio_write32(TIMER2_IRQSTATUS, 0x2);
     
-    // 2. Increment tick counter (for timekeeping)
+    // 2. Increment tick counter
     timer_ticks++;
     
-    // 3. Call scheduler (triggers context switch)
-    sched_tick();
-    
-    // NOTE: sched_tick() may not return here if context switch happens
-    // EOI is handled by irq_dispatch after timer_isr returns
+    // 3. Notify scheduler
+    // This only sets a flag (need_reschedule = true)
+    // and returns immediately.
+    scheduler_tick();
 }
 ```
 
-**CRITICAL: Clear interrupt trước sched_tick()**
-- Nếu không clear → interrupt re-asserts ngay lập tức
-- ISR được gọi lại vô hạn
-- Kernel hang
+**Improvement:**
+- ISR chạy rất nhanh (low latency).
+- Tránh được vấn đề EOI (vì ISR return về `irq_dispatch`, EOI được gọi bình thường).
+- Không còn risk stack corruption do nested IRQ context switch.
 
 ---
 
