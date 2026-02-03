@@ -1,7 +1,7 @@
 /* ============================================================
  * main.c
  * ------------------------------------------------------------
- * RefARM-OS: Interactive Shell
+ * RefARM-OS: Phase 7 - Two Task Context Switch Test
  * Target: BeagleBone Black (AM335x)
  * ============================================================ */
 
@@ -10,10 +10,16 @@
 #include "intc.h"
 #include "irq.h"
 #include "cpu.h"
-#include "shell.h"
+#include "timer.h"
+#include "scheduler.h"
+#include "idle.h"
+#include "test_task.h"
 
 void kernel_main(void)
 {
+    struct task_struct *idle;
+    struct task_struct *test;
+    
     /* ========================================================
      * Phase 0: Early boot
      * ======================================================== */
@@ -23,6 +29,8 @@ void kernel_main(void)
     uart_printf("\n\n");
     uart_printf("========================================\n");
     uart_printf(" RefARM-OS Booting...\n");
+    uart_printf(" Phase 7: Two Task Test\n");
+    uart_printf(" Context Switch Verification\n");
     uart_printf("========================================\n\n");
 
     /* ========================================================
@@ -37,26 +45,46 @@ void kernel_main(void)
     uart_printf("[BOOT] Enabling UART RX interrupt...\n");
     uart_enable_rx_interrupt();
 
-    uart_printf("[BOOT] Enabling IRQ...\n");
-    irq_enable();
-
     uart_printf("[BOOT] Done.\n\n");
 
     /* ========================================================
-     * Phase 2: Shell
+     * Phase 2: Timer (for scheduler ticks)
      * ======================================================== */
-    shell_init();
+    uart_printf("[BOOT] Initializing Timer...\n");
+    timer_init();
+    uart_printf("[BOOT] Timer configured for 10ms ticks (100 Hz)\n\n");
 
     /* ========================================================
-     * Phase 3: Main loop
+     * Phase 3: Scheduler
      * ======================================================== */
-    while (1) {
-        int c = uart_getc();
-
-        if (c >= 0) {
-            shell_process_char((char)c);
-        } else {
-            wfi();
-        }
-    }
+    uart_printf("[BOOT] Initializing Scheduler...\n");
+    scheduler_init();
+    
+    uart_printf("[BOOT] Creating idle task...\n");
+    idle = get_idle_task();
+    
+    uart_printf("[BOOT] Adding idle task to scheduler...\n");
+    scheduler_add_task(idle);
+    
+    uart_printf("\n[BOOT] Creating test task...\n");
+    test = get_test_task();
+    
+    uart_printf("[BOOT] Adding test task to scheduler...\n");
+    scheduler_add_task(test);
+    
+    uart_printf("\n[BOOT] Boot complete!\n");
+    uart_printf("[BOOT] Total tasks: 2 (idle + test)\n");
+    uart_printf("[BOOT] Time slice: 10ms per task\n");
+    uart_printf("[BOOT] IRQs kept disabled (will enable on first task start)\n");
+    // irq_enable();  <-- REMOVED to fix race condition
+    
+    /* ========================================================
+     * Phase 4: Start Scheduler (NEVER RETURNS)
+     * ======================================================== */
+    uart_printf("[BOOT] Starting scheduler...\n\n");
+    scheduler_start();
+    
+    /* Should never reach here */
+    uart_printf("[BOOT] FATAL: Returned from scheduler_start!\n");
+    while (1);
 }
