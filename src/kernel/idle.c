@@ -5,38 +5,52 @@
  * Target: BeagleBone Black (ARMv7-A)
  * ============================================================ */
 
+#include "idle.h"
 #include "task.h"
 #include "uart.h"
-#include "cpu.h"
+#include <stdbool.h>
 
 /* Idle task stack (1KB) */
 #define IDLE_STACK_SIZE 1024
 static uint8_t idle_stack[IDLE_STACK_SIZE] __attribute__((aligned(8)));
 
 /* Idle task structure */
-static struct task_struct idle_task;
+static struct task_struct idle_task_struct;
+
+// Define PRINT_INTERVAL, assuming it was 1000000 from the original code's logic
+#define PRINT_INTERVAL 1000000
 
 /**
  * Idle task entry point
  * Runs when no other task is ready
  */
-static void idle_task_func(void)
+static void idle_task(void)
 {
     uint32_t counter = 0;
     
     uart_printf("[IDLE] Idle task started\n");
     uart_printf("[IDLE] Stack: 0x%08x - 0x%08x\n",
-                (uint32_t)idle_stack,
-                (uint32_t)idle_stack + IDLE_STACK_SIZE);
+                (uint32_t)&idle_stack[0],
+                (uint32_t)&idle_stack[IDLE_STACK_SIZE]);
     
-    /* Infinite loop */
+    /* Main idle loop */
     while (1) {
-        /* Increment counter */
         counter++;
         
-        /* Log every 1000000 iterations */
-        if (counter % 1000000 == 0) {
+        /* Print status periodically */
+        if (counter % PRINT_INTERVAL == 0) {
             uart_printf("[IDLE] Running... counter=%u\n", counter);
+        }
+        
+        /* 
+         * Check if scheduler wants us to yield
+         * This is the cooperative yield point
+         */
+        extern volatile bool need_reschedule;
+        if (need_reschedule) {
+            extern void scheduler_yield(void);
+            scheduler_yield();
+            /* ← Task resumes here after being switched back */
         }
         
         /* 
@@ -57,12 +71,12 @@ static void idle_task_func(void)
 struct task_struct *get_idle_task(void)
 {
     /* Initialize idle task */
-    idle_task.name = "idle";
-    idle_task.state = TASK_STATE_READY;
-    idle_task.id = 0;  /* Will be set by scheduler */
+    idle_task_struct.name = "idle";
+    idle_task_struct.state = TASK_STATE_READY;
+    idle_task_struct.id = 0;  /* Will be set by scheduler */
     
     /* Initialize stack */
-    task_stack_init(&idle_task, idle_task_func, idle_stack, IDLE_STACK_SIZE);
+    task_stack_init(&idle_task_struct, idle_task, idle_stack, IDLE_STACK_SIZE);
     
-    return &idle_task;
+    return &idle_task_struct;
 }

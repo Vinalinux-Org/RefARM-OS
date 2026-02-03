@@ -51,10 +51,18 @@ void scheduler_start(void) __attribute__((noreturn));
 /**
  * Schedule next task (called from timer ISR)
  * 
- * Performs context switch to next ready task in round-robin order.
- * This is the scheduler policy implementation.
+ * Sets need_reschedule flag to signal tasks to yield.
+ * Does NOT perform context switch (runs in IRQ mode).
  */
 void scheduler_tick(void);
+
+/**
+ * Voluntary task yield
+ * 
+ * Called by tasks when they detect need_reschedule flag.
+ * Performs actual context switch in SVC mode (safe).
+ */
+void scheduler_yield(void);
 
 /**
  * Get current running task

@@ -10,6 +10,7 @@
 #include "uart.h"
 #include "cpu.h"
 #include <stddef.h>
+#include <stdbool.h>
 
 /* ============================================================
  * External Assembly Functions
@@ -34,7 +35,7 @@ static struct task_struct *current_task = NULL;
 static uint32_t current_task_index = 0;
 
 /* Scheduler enabled flag */
-static uint32_t scheduler_running = 0;
+static bool scheduler_started = false;
 
 /* ============================================================
  * Scheduler Implementation
@@ -56,7 +57,7 @@ void scheduler_init(void)
     task_count = 0;
     current_task = NULL;
     current_task_index = 0;
-    scheduler_running = 0;
+    scheduler_started = false;
     
     uart_printf("[SCHED] Scheduler initialized\n");
     uart_printf("  MAX_TASKS: %d\n", MAX_TASKS);
@@ -116,7 +117,7 @@ void scheduler_start(void)
     current_task = tasks[0];
     current_task_index = 0;
     current_task->state = TASK_STATE_RUNNING;
-    scheduler_running = 1;
+    scheduler_started = true;
     
     uart_printf("[SCHED] Starting task 0: '%s'\n", current_task->name);
     
@@ -152,75 +153,112 @@ void scheduler_start(void)
     while (1);
 }
 
-/**
- * Schedule next task (called from timer ISR)
- * Performs round-robin context switch
+/* ============================================================
+ * Global Reschedule Flag
+ * ============================================================
+ * 
+ * Set by IRQ handler (scheduler_tick) when time slice expires.
+ * Checked by tasks in their main loop.
+ * Cleared when context switch completes.
+ */
+volatile bool need_reschedule = false;
+
+/* ============================================================
+ * scheduler_tick - Called from Timer ISR
+ * ============================================================
+ * 
+ * CRITICAL: This runs in IRQ mode!
+ * We CANNOT safely call context_switch() here because:
+ * - IRQ stack is shared
+ * - Nested interrupts could corrupt stack
+ * 
+ * Solution: Just set a flag and let tasks yield voluntarily.
  */
 void scheduler_tick(void)
+{
+    /* Ignore ticks before scheduler starts */
+    if (!scheduler_started) {
+        uart_printf("[SCHED] WARNING: Tick before scheduler started\n");
+        return;
+    }
+    
+    /* 
+     * IRQ-safe operation: Just set flag
+     * Tasks will check this and call scheduler_yield()
+     */
+    need_reschedule = true;
+}
+
+/* ============================================================
+ * scheduler_yield - Voluntary Task Switch
+ * ============================================================
+ * 
+ * Called by tasks when they detect need_reschedule flag.
+ * Runs in SVC mode (task context), so safe to switch.
+ */
+void scheduler_yield(void)
 {
     struct task_struct *prev_task;
     struct task_struct *next_task;
     uint32_t next_index;
     
-    /* Paranoid check */
-    if (!scheduler_running || current_task == NULL) {
-        uart_printf("[SCHED] WARNING: Tick before scheduler started\n");
+    /* Check if reschedule is actually needed */
+    if (!need_reschedule) {
         return;
     }
+    
+    /* Clear flag atomically */
+    need_reschedule = false;
+    
+    /* ============================================================
+     * Round-Robin Scheduling Logic
+     * ============================================================ */
     
     /* Only one task? No need to switch */
     if (task_count == 1) {
-        return;  /* Continue running current task */
-    }
-    
-    /* Round-robin: select next task */
-    next_index = (current_task_index + 1) % task_count;
-    next_task = tasks[next_index];
-    
-    /* Same task? (shouldn't happen with count > 1) */
-    if (next_task == current_task) {
         return;
     }
-    
-    /* Save pointer to current task (about to become previous) */
+
+    /* Save pointer to current task */
     prev_task = current_task;
+    
+    /* Find next ready task (simple round-robin) */
+    next_index = (current_task_index + 1) % MAX_TASKS;
+    
+    /* Handle wrap-around */
+    if (next_index >= task_count) {
+        next_index = 0;
+    }
+    
+    next_task = tasks[next_index];
+    
+    /* Sanity check */
+    if (next_task->state != TASK_STATE_READY) {
+        uart_printf("[SCHED] ERROR: Next task %u not ready! State: %u\n", next_task->id, next_task->state);
+        // Fallback: try to find another ready task or stick with current
+        // For now, just return to current task
+        return;
+    }
     
     /* Update states */
     prev_task->state = TASK_STATE_READY;
     next_task->state = TASK_STATE_RUNNING;
+
+    /* Update global scheduler state */
+    current_task_index = next_index;
+    current_task = next_task;
+    
+    uart_printf("[SCHED] Yield: task %u ('%s') -> task %u ('%s')\n",
+                prev_task->id, prev_task->name,
+                next_task->id, next_task->name);
     
     /* 
-     * CRITICAL: Update scheduler state BEFORE context switch
-     * 
-     * context_switch() NEVER RETURNS (it's an exception return)
-     * When this task runs again, it will return from a DIFFERENT
-     * scheduler_tick() call (from a future timer interrupt)
-     * 
-     * Therefore, we must update current_task BEFORE switching,
-     * so the next tick sees correct state.
+     * Perform context switch
+     * Safe here because we're in SVC mode (task context)
      */
-    current_task = next_task;
-    current_task_index = next_index;
+    context_switch(prev_task, next_task);
     
-    /* Perform context switch
-     * This will:
-     * - Save prev_task's registers to its stack
-     * - Load next_task's registers from its stack
-     * - Jump to next_task via MOVS PC, LR (exception return)
-     * 
-     * ❌ CODE AFTER THIS POINT IS NEVER EXECUTED
-     * When current task runs again, it continues from where
-     * it was preempted, NOT from here.
-     */
-    // context_switch(prev_task, next_task);
-    
-    /* TEMPORARY DEBUG: Just switch pointers back to fake it */
-    current_task = prev_task;
-    current_task_index = (next_index + MAX_TASKS - 1) % MAX_TASKS;
-    uart_printf("[SCHED] Tick! (Context switch skipped for debug)\n");
-    return;
-    
-    /* ❌ DEAD CODE - never reached */
+    /* ❌ NEVER REACHED - task will resume here on next switch back */
 }
 
 /**
