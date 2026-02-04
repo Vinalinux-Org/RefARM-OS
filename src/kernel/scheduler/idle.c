@@ -48,8 +48,15 @@ static void idle_task(void)
          */
         extern volatile bool need_reschedule;
         if (need_reschedule) {
-            extern void scheduler_yield(void);
-            scheduler_yield();
+        if (need_reschedule) {
+            /* 
+             * Voluntary Yield via System Call 
+             * Must use SVC #0 because we are in USR mode
+             */
+            __asm__ volatile("svc #0");
+            
+            /* ← Task resumes here after being switched back */
+        }
             /* ← Task resumes here after being switched back */
         }
         

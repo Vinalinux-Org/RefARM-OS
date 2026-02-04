@@ -84,27 +84,68 @@ exception_entry_undefined:
  * SPSR_svc = CPSR before exception
  * ============================================================ */
 exception_entry_svc:
-    /* No LR adjustment needed (already points to next instruction) */
-    
-    /* Save context on SVC mode stack
-     * Order: r0-r12, lr first, then SPSR
-     */
+    /* ==========================================================
+     * SVC Handler (User Mode Entry/Syscall)
+     * ----------------------------------------------------------
+     * Entered in: SVC mode
+     * LR_svc: Points to instruction AFTER "svc #n"
+     * SPSR_svc: Saved CPSR of the caller (User Mode)
+     * ========================================================== */
+
+    /* 1. Save General Purpose Registers + LR (14 registers) */
+    /* Stack check: 14 regs * 4 bytes = 56 bytes */
     stmfd   sp!, {r0-r12, lr}
     
-    /* Save SPSR after general registers */
+    /* 2. Save SPSR (1 register) WITH ALIGNMENT PADDING 
+     * AAPCS requires SP to be 8-byte aligned at public interfaces.
+     * Currently pushes: 14 regs. Need 2 more to make 16 (16*4=64).
+     * We push {SPSR, Padding}.
+     */
     mrs     r0, spsr
-    stmfd   sp!, {r0}
+    mov     r1, #0              /* Zero padding */
+    stmfd   sp!, {r0, r1}       /* SP -= 8. [SP]=SPSR, [SP+4]=Pad */
     
-    /* Get context pointer (already on SVC stack) */
-    mov     r0, sp
+    /* 3. Prepare C Handler Arguments */
+    mov     r0, sp              /* r0 = struct pt_regs *regs */
     
-    /* Already in SVC mode - no switch needed */
+    /* 4. Call C Handler */
+    bl      svc_handler         /* src/kernel/core/svc_handler.c */
     
-    /* Call C handler (pass context pointer) */
-    bl      handle_svc
+    /* 5. Restore SPSR */
+    .global svc_exit_trampoline
+svc_exit_trampoline:
+    /* 
+     * Stack at entry: [Pad, SPSR, R0..R12, PC] 
+     * SP points to Pad/SPSR (Low Address)
+     */
+
+    /* 1. Pop Padding and SPSR */
+    ldmfd   sp!, {r0, r1}      /* R0=SPSR, R1=Pad */
+    msr     spsr_cxsf, r0
     
-    /* Should never return - halt */
-    b       .
+    /* 
+     * 2. Setup SP_usr (User Stack Pointer) to match SP_svc finish point.
+     * We are currently in SVC mode. SP_usr is Banked.
+     * Strategies:
+     *  - Use 'stm sp^' (User regs store) - messy.
+     *  - Switch to System Mode (shares registers with User), set SP, switch back.
+     */
+     
+    /* Calculate where SP_svc will be AFTER popping {r0-r12, pc} */
+    /* 14 registers * 4 bytes = 56 bytes */
+    add     r2, sp, #56        /* R2 = Target SP_usr */
+    
+    /* Switch to System Mode (Mode 0x1F) - Access User Regs with Privilege */
+    cps     #0x1F
+    mov     sp, r2             /* Set SP_usr */
+    
+    /* Switch back to SVC Mode (Mode 0x13) */
+    cps     #0x13
+    
+    /* 3. Restore Context and Return 
+     * "^" suffix copies SPSR_svc -> CPSR (Mode Switch)
+     */
+    ldmfd   sp!, {r0-r12, pc}^
 
 /* ============================================================
  * Prefetch Abort Exception Entry

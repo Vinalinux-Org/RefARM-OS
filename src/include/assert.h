@@ -21,13 +21,22 @@ static inline void __disable_irq(void) {
  * 3. Halt CPU
  */
 static inline void __attribute__((noreturn)) kernel_panic(const char *msg, const char *file, int line) {
-    __disable_irq();
+    /* 
+     * Disable IRQ and FIQ explicitly using CPS
+     * 'cpsid if' disables both IRQ and FIQ
+     * This works in Privileged modes (SVC, IRQ, etc.)
+     */
+    asm volatile("cpsid if" : : : "memory", "cc");
     
     uart_printf("\n\n[KERNEL PANIC] %s\n", msg);
     uart_printf("  AT: %s:%d\n", file, line);
     uart_printf("  SYSTEM HALTED.\n");
     
     while (1) {
+        /* 
+         * WFI might wake up on pending (even masked) interrupts
+         * So we loop tightly.
+         */
         asm volatile("wfi");
     }
 }

@@ -18,140 +18,58 @@
  * context_switch - Switch from current task to next task
  * ============================================================
  * 
- * Called from timer ISR (IRQ mode)
+ * Standard Callee-Saved Context Switch (Cooperative)
  * 
  * Arguments:
  *   r0 = struct task_struct *current (pointer to current task)
  *   r1 = struct task_struct *next (pointer to next task)
  * 
- * Stack frame layout (60 bytes, low → high address):
- *   [SPSR:4] [LR:4] [r0-r12:52] ← SP
+ * Stack frame layout (36 bytes):
+ *   [LR] [R11] [R10] ... [R4]
  * 
- * Contract:
- * - Must save ALL general purpose registers
- * - Must save LR (return address)
- * - Must save SPSR (task's CPSR snapshot)
- * - Must switch SP for new task
- * - Must NOT corrupt any registers of either task
- * 
- * CRITICAL NOTES:
- * - We are in IRQ mode when called
- * - SPSR_irq contains task's CPSR (set by hardware on IRQ entry)
- * - We switch to SVC mode to access task's stack
- * - We use SPSR, NOT CPSR (common mistake!)
- * - Memory barrier (DSB) ensures stack writes complete
+ * Note: R0-R3, R12 are caller-saved and handled by C compiler if needed.
+ *       SPSR is NOT saved because we are staying in Kernel Mode (SVC).
  */
 context_switch:
-    /* ========================================
-     * SAVE CURRENT TASK
-     * ======================================== */
+    /* 
+     * 1. Save Callee-Saved Registers + LR
+     * stmfd sp!, {r4-r11, lr}
+     */
+    stmfd   sp!, {r4-r11, lr}
     
     /* 
-     * Step 1: Switch to SVC mode to access task's banked registers
-     * 
-     * Use MSR instead of CPS for safety in IRQ context
-     * 0xD3 = 0b11010011:
-     *   - Mode bits [4:0] = 0x13 (SVC)
-     *   - I bit [7] = 1 (IRQ disabled)
-     *   - F bit [6] = 1 (FIQ disabled) 
+     * 2. Save Stack Pointer to current task structure
+     * current->context.sp is at offset 52 (13 * 4) 
+     * defined in existing task_struct layout matching r0-r12 placeholder
      */
-    msr     cpsr_c, #0xD3           @ Switch to SVC mode, IRQ/FIQ disabled
-    
-    /* Now in SVC mode - can access r13_svc and r14_svc */
+    str     sp, [r0, #52]
     
     /* 
-     * Step 2: Save general purpose registers on task's stack
-     * STMFD = Store Multiple Full Descending (push)
-     * sp! means decrement SP during store
+     * 3. Memory barrier
      */
-    stmfd   sp!, {r0-r12}           @ Push r0-r12 (52 bytes)
-    
-    /* 
-     * Step 3: Save task's link register
-     * LR contains where task was executing
-     */
-    stmfd   sp!, {lr}               @ Push r14_svc (4 bytes)
-    
-    /* 
-     * Step 4: Get and save SPSR_irq
-     * 
-     * CRITICAL: SPSR_irq is still accessible even in SVC mode
-     * because we haven't returned from IRQ exception yet.
-     * It contains task's original CPSR before interrupt.
-     * 
-     * MRS spsr reads SPSR of the mode we CAME FROM (IRQ mode)
-     */
-    mrs     r2, spsr                @ Read SPSR_irq into r2
-    stmfd   sp!, {r2}               @ Push SPSR (4 bytes)
-    
-    /* Stack frame complete: [SPSR] [LR] [r0-r12], SP at bottom */
-    
-    /* 
-     * Step 5: Save current task's SP
-     * 
-     * r0 still contains current task pointer
-     * task_struct.context is at offset 0
-     * task_context.sp is at offset 52 (after r0-r12)
-     * 
-     * Since struct task_context starts at offset 0 of task_struct,
-     * and sp is the 14th field (after r0-r12), offset = 13*4 = 52
-     */
-    str     sp, [r0, #52]           @ current->context.sp = sp
-    
-    /* 
-     * Step 6: Memory barrier
-     * 
-     * Ensure all stack writes complete before loading next task.
-     * Critical on Cortex-A8 due to write buffer.
-     */
-    dsb                             @ Data Synchronization Barrier
+    dsb
     
     /* ========================================
      * LOAD NEXT TASK
      * ======================================== */
     
     /* 
-     * Step 7: Load next task's SP
+     * 4. Load next task's SP
      * r1 contains next task pointer
      */
-    ldr     sp, [r1, #52]           @ sp = next->context.sp
+    ldr     sp, [r1, #52]
     
     /* 
-     * Step 8: Restore next task's SPSR
-     * 
-     * Pop SPSR from stack and write to SPSR register.
-     * This will be the task's CPSR when we return.
-     * 
-     * msr spsr_cxsf writes all fields:
-     *   c = control (mode, interrupt bits)
-     *   x = extension
-     *   s = status (condition flags)
-     *   f = flags
+     * 5. Restore next task's Registers
      */
-    ldmfd   sp!, {r2}               @ Pop SPSR into r2
-    msr     spsr_cxsf, r2           @ Write to SPSR
+    ldmfd   sp!, {r4-r11, lr}
     
     /* 
-     * Step 9: Restore next task's LR
+     * 6. Return to task (jump to LR)
+     * BX LR allows interworking (Thumb/ARM), though we are likely ARM-only.
+     * This returns to the instruction after context_switch() call.
      */
-    ldmfd   sp!, {lr}               @ Pop LR into r14_svc
-    
-    /* 
-     * Step 10: Restore next task's GPRs
-     */
-    ldmfd   sp!, {r0-r12}           @ Pop r0-r12
-    
-    /* 
-     * Step 11: Return to task
-     * 
-     * MOVS (S suffix) is a privileged return:
-     * - PC ← LR (jump to task)
-     * - CPSR ← SPSR (restore processor state)
-     * 
-     * This is atomic: both operations happen together.
-     * Task resumes with restored registers and CPSR.
-     */
-    movs    pc, lr                  @ Privileged return
+    bx      lr
 
 /* ============================================================
  * start_first_task - Initialize first task execution
@@ -162,46 +80,21 @@ context_switch:
  * 
  * Arguments:
  *   r0 = struct task_struct *first (pointer to first task)
- * 
- * Must:
- * - Load task's initial stack frame
- * - Restore all registers from frame
- * - Jump to task entry point
- * - Set CPSR to SVC mode with IRQ enabled
  */
 start_first_task:
     /* 
-     * Step 1: Switch to SVC mode
-     * Same as context_switch
+     * 1. Load task's SP
      */
-    msr     cpsr_c, #0xD3           @ SVC mode, IRQ/FIQ disabled
+    ldr     sp, [r0, #52]
     
     /* 
-     * Step 2: Load task's SP
+     * 2. Restore Registers (pop Frame 2: Kernel Context)
      */
-    ldr     sp, [r0, #52]           @ sp = first->context.sp
+    ldmfd   sp!, {r4-r11, lr}
     
     /* 
-     * Step 3: Pop and set SPSR
-     * For first task, this contains SVC mode + IRQ enabled
+     * 3. Jump to task (actually jumps to svc_exit_trampoline)
      */
-    ldmfd   sp!, {r2}               @ Pop initial SPSR
-    msr     spsr_cxsf, r2           @ Set SPSR
-    
-    /* 
-     * Step 4: Pop LR (entry point)
-     */
-    ldmfd   sp!, {lr}               @ Pop entry point into LR
-    
-    /* 
-     * Step 5: Pop GPRs (all zeros for new task)
-     */
-    ldmfd   sp!, {r0-r12}           @ Pop r0-r12
-    
-    /* 
-     * Step 6: Jump to task with CPSR restore
-     * MOVS makes CPSR ← SPSR, enabling IRQ as configured
-     */
-    movs    pc, lr                  @ Jump to entry point, restore CPSR
+    bx      lr
 
 .end

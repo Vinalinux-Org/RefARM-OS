@@ -31,32 +31,36 @@ static struct task_struct test_task_struct;
 /**
  * Test task entry point
  */
+/* ============================================================
+ * User Space Wrapper
+ * ============================================================ */
+void syscall_yield(void) 
+{
+    /* SVC #0 - Yield System Call */
+    __asm__ volatile("svc #0");
+}
+
+/**
+ * Test task entry point
+ * Now runs in USER MODE (PL0)
+ */
 static void test_task(void)
 {
     uint32_t counter = 0;
     
-    uart_printf("[TEST] Test task started\n");
-    uart_printf("[TEST] Stack: 0x%08x - 0x%08x\n",
-                (uint32_t)&test_stack[0],
-                (uint32_t)&test_stack[TEST_STACK_SIZE]);
+    uart_printf("[TEST] Test task started (USR Mode)\n");
+    uart_printf("[TEST] This task should NOT be able to access CPSR M-bits!\n");
     
     /* Main test loop */
     while (1) {
         counter++;
         
         /* Print status periodically */
-        if (counter % PRINT_INTERVAL == 0) {
-            uart_printf("[TEST] Running... counter=%u\n", counter);
-        }
-        
-        /* 
-         * Check if scheduler wants us to yield
-         * This is the cooperative yield point
-         */
-        extern volatile bool need_reschedule;
-        if (need_reschedule) {
-            extern void scheduler_yield(void);
-            scheduler_yield();
+        if (counter % (PRINT_INTERVAL/10) == 0) { // Speed up for test
+            uart_printf("[TEST] User Task Running... (Counter %u)\n", counter);
+             
+            /* Voluntary Yield via Syscall */
+            syscall_yield();
         }
     }
 }

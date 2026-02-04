@@ -8,6 +8,7 @@
 #include "task.h"
 #include "cpu.h"
 #include "uart.h"
+#include "assert.h"
 #include <stddef.h>
 
 /* ============================================================
@@ -34,132 +35,94 @@
  * - r0-r12: all zeros
  * - SP: points to bottom of frame (lowest address)
  */
+extern void svc_exit_trampoline(void);
+
 void task_stack_init(struct task_struct *task, 
                      void (*entry_point)(void),
                      void *stack_base, 
                      uint32_t stack_size)
 {
     uint32_t *stack_ptr;
-    uint32_t initial_spsr;
     
-    uart_printf("[TASK] Initializing stack for task '%s'\n", 
+    uart_printf("[TASK] Initializing stack for task '%s' (User Mode Model)\n", 
                 task->name ? task->name : "(unnamed)");
     
-    /* 
-     * Stack setup:
-     * stack_base points to HIGH address (stack top)
-     * We build frame from top downwards
-     */
+    /* STACK CANARY: Write magic number at stack bottom */
+    *(uint32_t *)stack_base = STACK_CANARY_VALUE;
+    
     stack_ptr = (uint32_t *)((char *)stack_base + stack_size);
     
-    uart_printf("  Stack base: 0x%08x\n", (uint32_t)stack_base);
-    uart_printf("  Stack size: %u bytes\n", stack_size);
-    uart_printf("  Stack top:  0x%08x\n", (uint32_t)stack_ptr);
-    uart_printf("  Entry point: 0x%08x\n", (uint32_t)entry_point);
+    /* ============================================================
+     * FRAME 1: USER CONTEXT (High Address)
+     * This frame simulates the state saved by SVC Handler logic.
+     * svc_exit_trampoline will pop this to return to User Mode.
+     * ============================================================ */
     
-    uart_printf("  Stack top:  0x%08x\n", (uint32_t)stack_ptr);
-    uart_printf("  Entry point: 0x%08x\n", (uint32_t)entry_point);
-    
-    /* 
-     * STACK CANARY:
-     * Write magic number at the very bottom of the stack (lowest address).
-     * The scheduler will check this value periodically.
-     */
-    *(uint32_t *)stack_base = STACK_CANARY_VALUE;
-    uart_printf("  Stack canary set at 0x%08x: 0x%08x\n", 
-                (uint32_t)stack_base, STACK_CANARY_VALUE);
-    
-    /* 
-     * start_first_task() pops in this order (Low -> High):
-     *   1. SPSR  (first pop)
-     *   2. LR    (second pop)
-     *   3. r0-r12 (third pop)
-     * 
-     * Stack grows DOWN, so we must PUSH in REVERSE order:
-     *   1st Push: r0-r12 (Highest Address)
-     *   2nd Push: LR
-     *   3rd Push: SPSR (Lowest Address)
-     */
-    
-    /* 1. Push r0-r12 FIRST (13 registers, all zeros) */
-    /* These will be at HIGHEST addresses in the frame */
-    for (int i = 0; i < 13; i++) {
-        *--stack_ptr = 0;  /* Decrement first, then write */
-    }
-    
-    /* 2. Push LR SECOND (entry point) */
+    /* 1.1. Push LR (User Entry Point) */
     *--stack_ptr = (uint32_t)entry_point;
     
-    /* 
-     * 3. Push SPSR LAST (will be at LOWEST address)
-     * 
-     * Initial processor state for task:
-     * - Mode: SVC (0x13)
-     * - I bit: 0 (IRQ enabled)
-     * - F bit: 0 (FIQ enabled)
-     */
-    initial_spsr = CPSR_MODE_SVC;  /* 0x13 */
-    if (task->id == 0) {
-        /* SPECIAL: Indirect way to keep IRQs disabled for idle task initially?
-           No, keep 0x13. start_first_task enables IRQ via SPSR restore. */
+    /* 1.2. Push R0-R12 (User Registers) */
+    for (int i = 0; i < 13; i++) {
+        *--stack_ptr = 0;
     }
-    *--stack_ptr = initial_spsr;
     
-    /* 
-     * Stack frame complete!
-     * 
-     * Layout (low → high address):
-     * [SPSR] ← SP points here (will be popped FIRST)
-     * [LR]
-     * [r0-r12]
-     */
+    /* 1.3. Push Padding (Alignment) */
+    *--stack_ptr = 0;
+    
+    /* 1.4. Push SPSR (USR Mode = 0x10) */
+    *--stack_ptr = 0x10; 
+    
+    /* ============================================================
+     * FRAME 2: KERNEL CONTEXT (Low Address)
+     * This frame simulates the state saved by context_switch().
+     * Structure: [LR] [R11] ... [R4] (Callee-Saved Only)
+     * start_first_task() will pop this to "return" to trampoline.
+     * ============================================================ */
+    
+    /* 2.1. Push LR (Return address -> Trampoline) */
+    *--stack_ptr = (uint32_t)svc_exit_trampoline;
+    
+    /* 2.2. Push R11-R4 (8 registers) */
+    for (int i = 0; i < 8; i++) {
+        *--stack_ptr = 0;  /* Initial value 0 */
+    }
+    
+    /* ============================================================
+     * Finalize
+     * ============================================================ */
     task->context.sp = (uint32_t)stack_ptr;
     
-    /* Fill in task metadata */
     task->stack_base = stack_base;
     task->stack_size = stack_size;
     task->state = TASK_STATE_READY;
     
-    /* Log final state */
-    uart_printf("  Initial SP: 0x%08x (after frame setup)\n", 
-                task->context.sp);
-    uart_printf("  Frame size: %u bytes\n", 
-                (uint32_t)stack_base + stack_size - task->context.sp);
-    uart_printf("  Initial SPSR: 0x%08x (SVC mode, IRQ enabled)\n", 
-                initial_spsr);
-    
-    
-    /* Verify stack didn't overflow */
-    if (task->context.sp < (uint32_t)stack_base) {
-        uart_printf("  [ERROR] Stack overflow during init!\n");
-        uart_printf("    SP went below stack_base\n");
-        while (1);  /* Halt */
+    /* Verify stack safety */
+    if (task->context.sp <= (uint32_t)stack_base) {
+        PANIC("Stack Setup Overflow");
     }
     
-    uart_printf("  Stack initialized successfully\n");
+    uart_printf("  Stack initialized. SP=0x%08x\n", task->context.sp);
     
-    /* 
-     * CRITICAL DEBUG: Dump actual stack memory
-     * Verify values are written correctly
-     */
-    uart_printf("\n[TASK] Memory dump of stack frame:\n");
-    uint32_t *dump_ptr = (uint32_t *)task->context.sp;
+    /* CRITICAL DEBUG: Dump stack frame */
+    uart_printf("[TASK] Stack Dump:\n");
+    uint32_t *d = (uint32_t *)task->context.sp;
     
-    /* Stack expands HIGH relative to SP */
-    uart_printf("  [0x%08x] SPSR = 0x%08x (expect 0x00000013)\n", 
-                (uint32_t)dump_ptr, *dump_ptr);
-    dump_ptr++;
-    uart_printf("  [0x%08x] LR   = 0x%08x (expect 0x%08x)\n",
-                (uint32_t)dump_ptr, *dump_ptr, (uint32_t)entry_point);
-    
-    /* Dump first few r registers */
-    for (int i = 12; i >= 0; i--) {
-        dump_ptr++;
-        if (i >= 10) {
-            uart_printf("  [0x%08x] r%d  = 0x%08x (expect 0x00000000)\n",
-                        (uint32_t)dump_ptr, i, *dump_ptr);
-        }
-    }
-    
+    /* Frame 2 (Kernel) */
+    uart_printf("  [Frame 2 - Kernel]\n");
+    /* Currently SP points to R4 */
+    uart_printf("  R4..R11, LR (Callee Saved):\n");
+    for(int i=0; i<9; i++) uart_printf("    %08x ", *d++);
     uart_printf("\n");
+    
+    /* Frame 1 (User) */
+    uart_printf("  [Frame 1 - User]\n");
+    uart_printf("  SPSR: 0x%08x (Expected 0x10)\n", *d++);
+    uart_printf("  PAD:  0x%08x\n", *d++);
+    uart_printf("  R12..R0 (User):\n");
+    for(int i=0; i<13; i++) uart_printf("    %08x ", *d++);
+    uart_printf("\n");
+    uart_printf("  LR:   0x%08x (Expected Entry Point)\n", *d++);
+    
+    /* Check entry_point val */
+    uart_printf("[TASK] Entry Point Addr: 0x%08x\n", (uint32_t)entry_point);
 }
