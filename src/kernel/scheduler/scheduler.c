@@ -11,6 +11,8 @@
 #include "cpu.h"
 #include <stddef.h>
 #include <stdbool.h>
+#include "trace.h"
+#include "assert.h"
 
 /* ============================================================
  * External Assembly Functions
@@ -27,6 +29,9 @@ extern void start_first_task(struct task_struct *first);
 /* Static task array */
 static struct task_struct *tasks[MAX_TASKS];
 static uint32_t task_count = 0;
+
+/* Stack Canary Value (Must match task.c) */
+#define STACK_CANARY_VALUE  0xDEADBEEF
 
 /* Current running task */
 static struct task_struct *current_task = NULL;
@@ -59,8 +64,7 @@ void scheduler_init(void)
     current_task_index = 0;
     scheduler_started = false;
     
-    uart_printf("[SCHED] Scheduler initialized\n");
-    uart_printf("  MAX_TASKS: %d\n", MAX_TASKS);
+    TRACE_SCHED("Scheduler initialized (MAX_TASKS: %d)", MAX_TASKS);
 }
 
 /**
@@ -125,19 +129,17 @@ void scheduler_start(void)
      * CRITICAL DEBUG: Dump stack frame before loading
      * Verify values are still correct before start_first_task() reads them
      */
-    uart_printf("[SCHED] Pre-flight check - dumping first task stack:\n");
+    /* 
+     * CRITICAL DEBUG: Dump stack frame before loading
+     * Verify values are still correct before start_first_task() reads them
+     */
+    TRACE_SCHED("Pre-flight check - dumping first task stack:");
     uint32_t *check_ptr = (uint32_t *)current_task->context.sp;
-    uart_printf("  task->context.sp = 0x%08x\n", current_task->context.sp);
-    uart_printf("  [0x%08x] = 0x%08x (SPSR, expect 0x13)\n", 
-                (uint32_t)check_ptr, *check_ptr);
-    check_ptr++;
-    uart_printf("  [0x%08x] = 0x%08x (LR, expect task entry)\n",
-                (uint32_t)check_ptr, *check_ptr);
-    check_ptr++;
-    uart_printf("  [0x%08x] = 0x%08x (r12)\n",
-                (uint32_t)check_ptr, *check_ptr);
     
-    uart_printf("[SCHED] Jumping to first task (NO RETURN)...\n\n");
+    /* Verify SPSR is 0x13 (SVC Mode) */
+    ASSERT((*check_ptr) == 0x00000013);
+    
+    TRACE_SCHED("Jumping to first task (NO RETURN)...");
     
     /* Load first task context and jump to it
      * This will:
@@ -177,8 +179,8 @@ volatile bool need_reschedule = false;
 void scheduler_tick(void)
 {
     /* Ignore ticks before scheduler starts */
+    /* Ignore ticks before scheduler starts */
     if (!scheduler_started) {
-        uart_printf("[SCHED] WARNING: Tick before scheduler started\n");
         return;
     }
     
@@ -214,6 +216,21 @@ void scheduler_yield(void)
      * Round-Robin Scheduling Logic
      * ============================================================ */
     
+    /* 
+     * STACK INTEGRITY CHECK (Canary)
+     * Check current task's stack bottom for overflow 
+     */
+    if (current_task != NULL) {
+        uint32_t *canary_ptr = (uint32_t *)current_task->stack_base;
+        if (*canary_ptr != STACK_CANARY_VALUE) {
+            TRACE_SCHED("FATAL: Stack overflow detected in task %d ('%s')", 
+                        current_task->id, current_task->name);
+            TRACE_SCHED("Canary at 0x%08x is 0x%08x (expected 0x%08x)", 
+                        (uint32_t)canary_ptr, *canary_ptr, STACK_CANARY_VALUE);
+            PANIC("Stack Canary Corrupted!");
+        }
+    }
+    
     /* Only one task? No need to switch */
     if (task_count == 1) {
         return;
@@ -245,12 +262,11 @@ void scheduler_yield(void)
     next_task->state = TASK_STATE_RUNNING;
 
     /* Update global scheduler state */
+    /* Update global scheduler state */
     current_task_index = next_index;
     current_task = next_task;
     
-    uart_printf("[SCHED] Yield: task %u ('%s') -> task %u ('%s')\n",
-                prev_task->id, prev_task->name,
-                next_task->id, next_task->name);
+    TRACE_SCHED("Yield: %u -> %u", prev_task->id, next_task->id);
     
     /* 
      * Perform context switch

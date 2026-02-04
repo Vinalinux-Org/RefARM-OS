@@ -14,6 +14,9 @@
  * Task Stack Initialization
  * ============================================================ */
 
+/* Magic number for stack overflow detection */
+#define STACK_CANARY_VALUE  0xDEADBEEF
+
 /**
  * Initialize task stack for first-time execution
  * 
@@ -54,11 +57,19 @@ void task_stack_init(struct task_struct *task,
     uart_printf("  Stack top:  0x%08x\n", (uint32_t)stack_ptr);
     uart_printf("  Entry point: 0x%08x\n", (uint32_t)entry_point);
     
+    uart_printf("  Stack top:  0x%08x\n", (uint32_t)stack_ptr);
+    uart_printf("  Entry point: 0x%08x\n", (uint32_t)entry_point);
+    
     /* 
-     * Build initial stack frame
-     * 
-     * CRITICAL: Must match EXACTLY what start_first_task() expects!
-     * 
+     * STACK CANARY:
+     * Write magic number at the very bottom of the stack (lowest address).
+     * The scheduler will check this value periodically.
+     */
+    *(uint32_t *)stack_base = STACK_CANARY_VALUE;
+    uart_printf("  Stack canary set at 0x%08x: 0x%08x\n", 
+                (uint32_t)stack_base, STACK_CANARY_VALUE);
+    
+    /* 
      * start_first_task() pops in this order (Low -> High):
      *   1. SPSR  (first pop)
      *   2. LR    (second pop)

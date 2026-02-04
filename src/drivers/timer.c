@@ -12,6 +12,7 @@
 #include "intc.h"
 #include "mmio.h"
 #include "uart.h"
+#include "trace.h"
 
 /* ============================================================
  * Clock Management Registers (AM335x TRM Chapter 8)
@@ -185,7 +186,15 @@ static void timer_irq_handler(void *data)
     /* Update tick count */
     timer_ticks++;
     
-    /* Call scheduler for context switching */
+    /* 
+     * Log heartbeat (optional, can be very noisy) 
+     * TRACE gets compiled out if disabled
+     */
+    if (timer_ticks % 100 == 0) {
+        TRACE_SCHED("Tick %u", timer_ticks);
+    }
+    
+    /* Call scheduler prompt (State Machine: Set Flag) */
     scheduler_tick();
 }
 
