@@ -20,15 +20,12 @@ Scheduler subsystem **không** triển khai:
 
 ## Lưu ý về thuật ngữ
 
-**Trong tài liệu này, scheduler được gọi là "preemptive" vì:**
-- Tasks bị gián đoạn bởi timer interrupt (involuntary preemption)
-- Tasks **không** tự nguyện yield CPU
+**Trong tài liệu này, scheduler được gọi là "Cooperative with Timer Hint" vì:**
+- Tasks vẫn bị ngắt bởi timer (để nhận tín hiệu tick).
+- Nhưng Kernel **không** cưỡng đoạt CPU ngay trong ngắt.
+- Tasks **tự nguyện** gọi `yield()` khi thấy tín hiệu từ timer.
 
-**Trong OS literature chuẩn:**
-- **Cooperative multitasking** = tasks tự gọi yield() để nhường CPU
-- **Preemptive multitasking** = kernel force context switch (như RefARM-OS)
-
-RefARM-OS là **preemptive**, không phải cooperative.
+RefARM-OS Giai đoạn 1 là **Cooperative** (có sự hỗ trợ của Timer), chưa hoàn toàn Preemptive.
 
 ---
 
@@ -106,31 +103,22 @@ TASK B    : . . . . . . . . : [==== RUN ====]  :                  :
           :                 :                  :                  : 
 ```
 
-**Điều gì xảy ra mỗi timer tick:**
+**Điều gì xảy ra mỗi timer tick (Cooperative Flow):**
 
 ```
 Tick 0 (10ms):
   - Task A đang chạy
-  - Timer interrupt xảy ra
-  - Save context A (r0-r12, sp, lr, cpsr)
-  - Load context B
+  - Timer interrupt xảy ra -> Set flag `need_reschedule` -> Return
+  - Task A tiếp tục chạy, kiểm tra flag
+  - Task A thấy cần nhường -> Gọi `scheduler_yield()`
+  - Save context A -> Load context B
   - Task B bắt đầu chạy
-  
-Tick 1 (20ms):
-  - Task B đang chạy
-  - Timer interrupt xảy ra
-  - Save context B
-  - Load context A
-  - Task A tiếp tục (từ chỗ bị preempt)
-  
-Tick 2 (30ms):
-  - Cycle lặp lại...
 ```
 
 **Key insight:**
-- Mỗi task "tưởng" nó chạy liên tục
-- Thực tế: task bị pause/resume liên tục
-- Context save/restore làm cho việc pause/resume transparent
+- Timer chỉ đóng vai trò "đồng hồ báo thức".
+- Task tự quyết định thời điểm "đi ngủ" (yield) sau khi nghe chuông.
+- Việc chuyển đổi diễn ra an toàn trong SVC mode, tránh phức tạp của IRQ nesting.
 
 ### 3.4. Tại sao preemptive round-robin?
 

@@ -28,32 +28,26 @@ Tài liệu này **không** mô tả:
 - Khi task A kết thúc time slice → chuyển sang task B
 - Sau task cuối → quay lại task đầu
 
-### 2.2. Tại sao round-robin?
+### 2.2. Cơ chế Round-Robin Hợp tác (Cooperative with Timer Hint)
 
-Lựa chọn round-robin vì:
-- **Đơn giản:** Không cần priority, không cần complex decision
-- **Fair:** Mọi task đều được CPU time đều đặn
-- **Deterministic:** Dễ reasoning về behavior
-- **No starvation:** Không có task nào bị bỏ quên
+Lựa chọn mô hình này vì:
+- **An toàn:** Tránh context switch trong IRQ mode (phức tạp và dễ lỗi với stack frame).
+- **Đơn giản:** Tách biệt rõ ràng giữa "Sự kiện thời gian" (Timer) và "Hành động chuyển đổi" (Task).
+- **Fair:** Sử dụng Timer để nhắc nhở (hint) các task nhường CPU đều đặn.
+
+### 2.3. Time Slice (Quantum)
+
+**Time slice** là khoảng thời gian định mức (quota) cho mỗi task.
+
+**Trong RefARM-OS Giai đoạn 1:**
+- Time slice = chu kỳ timer tick (~10ms).
+- Khi hết time slice, timer interrupt xảy ra, **nhưng không cưỡng ép switch ngay**.
+- Timer set cờ `need_reschedule = 1`.
+- Task đang chạy kiểm tra cờ này và tự nguyện gọi `scheduler_yield()`.
 
 **Trade-offs:**
-- Không có priority → không thể prioritize critical tasks
-- Không có deadline → không phù hợp cho real-time
-- Fixed time slice → không adaptive
-
-### 2.3. Time Slice
-
-**Time slice** (quantum) là khoảng thời gian mỗi task được chạy trước khi bị preempt.
-
-**Trong RefARM-OS:**
-- Time slice = timer tick period (khoảng 10ms)
-- Mọi task có cùng time slice
-- Không có dynamic adjustment
-
-**Trade-offs của time slice:**
-- **Quá ngắn** (<1ms): Context switch overhead cao
-- **Quá dài** (>100ms): Response time kém
-- **10ms:** Cân bằng hợp lý cho preemptive multitasking
+- Nếu task bị treo trong vòng lặp vô hạn (không check cờ), hệ thống sẽ treo.
+- Đây là giới hạn chấp nhận được trong giai đoạn phát triển kernel cốt lõi.
 
 ---
 
@@ -191,36 +185,51 @@ void sched_tick(void);
 
 ## 5. Scheduler Decision Flow
 
-### 5.1. sched_tick() logic
+### 5.1. Logic của sched_tick() - Lời nhắc nhở
 
 ```c
 void sched_tick(void) {
-    // Guard: scheduler chưa start
-    if (current_task == NULL) {
+    // Điều kiện tiên quyết: Scheduler đã start
+    if (!scheduler_started) {
         return;
     }
     
-    // Guard: chỉ có 1 task
-    if (task_count <= 1) {
+    // IRQ Mode: Chỉ làm việc đơn giản nhất
+    // Đánh dấu yêu cầu reschedule
+    need_reschedule = true;
+    
+    // KHÔNG gọi context_switch() ở đây!
+    // Chúng ta sẽ switch khi quay lại SVC mode của task.
+}
+```
+
+### 5.2. Logic của sched_yield() - Hành động thực sự
+
+Task code (hoặc vòng lặp kernel) sẽ gọi hàm này:
+
+```c
+void sched_yield(void) {
+    if (!need_reschedule && !explicit_yield) {
         return;
     }
-    
-    // Get next task
+
+    // 1. Clear flag
+    need_reschedule = false;
+
+    // 2. Chọn task tiếp theo (Round Robin)
     struct task_struct *next = &tasks[next_task_index];
     struct task_struct *prev = current_task;
     
-    // Update states
+    // 3. Cập nhật trạng thái
     prev->state = READY;
     next->state = RUNNING;
     
-    // Update scheduler state
+    // 4. Update pointer
     current_task = next;
     next_task_index = (next_task_index + 1) % task_count;
     
-    // Context switch (assembly)
+    // 5. Context switch (Thực hiện trong SVC Mode)
     context_switch(prev, next);
-    
-    // ❌ NEVER REACHED - context_switch() never returns
 }
 ```
 

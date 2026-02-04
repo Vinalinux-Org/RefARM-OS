@@ -4,7 +4,7 @@ flowchart TD
     %% =========================================
     subgraph CHECKS ["PHASE 1: GUARD CHECKS"]
         direction TB
-        Start(["Timer ISR calls sched_tick"])
+        Start(["Task calls scheduler_yield()"])
         
         CheckInit{"current_task is NULL?"}
         CheckCount{"task_count <= 1?"}

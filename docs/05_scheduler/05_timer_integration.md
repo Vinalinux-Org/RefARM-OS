@@ -31,24 +31,23 @@ Timer interrupt đóng vai trò **trigger mechanism** cho scheduler:
 
 **Flow tổng thể:**
 **Flow tổng thể (Phase 7.4+):**
+**Flow tổng thể (Cooperative):**
 ```
-DMTimer2 overflow (10ms)
+DMTimer2 overflow
     ↓
 IRQ exception
     ↓
-exception_entry_irq (assembly)
+timer_isr() (driver)
     ↓
-irq_dispatch (kernel IRQ core)
+sched_tick() (scheduler) -> Set flag `need_reschedule`
     ↓
-timer_isr (driver)
+Return to Task Loop
     ↓
-scheduler_tick (Sets flag, returns)
+Task checks flag
     ↓
-irq_dispatch (Perform EOI)
+scheduler_yield()
     ↓
-Task resumes (SVC) checks flag
-    ↓
-scheduler_yield (calls context_switch)
+context_switch() (SVC Mode)
 ```
 
 ### 2.2. Timer tick period
@@ -748,13 +747,12 @@ void sched_tick(void) {
 - Clear interrupt: ~10 cycles
 - Increment counter: ~5 cycles
 - EOI: ~20 cycles
-- sched_tick: ~20 cycles
-- **Total before context switch: ~55 cycles**
+- sched_tick (set flag): ~5 cycles
+- **Total ISR: ~40 cycles**
 
-**Context switch overhead:**
-- ~100 cycles (from `03_context_switch_contract.md`)
-
-**Total interrupt overhead: ~155 cycles @ 1GHz = 155ns**
+**Context switch overhead (Deferred):**
+- ~100 cycles (Happens in SVC mode via `yield`)
+- Không tính vào interrupt latency (Vì IRQ đã return).
 
 ### 10.2. Interrupt frequency impact
 
