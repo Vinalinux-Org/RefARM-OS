@@ -257,9 +257,14 @@ exception_entry_irq:
      */
     stmfd   sp!, {r0-r12, lr}
     
-    /* Save SPSR after general registers */
+    /* Save SPSR after general registers
+     * ALIGNMENT FIX: Push {SPSR, Padding} to maintain 8-byte stack alignment
+     * Stack was: 14 regs (56 bytes) -> Aligned
+     * We need to push 2 more words (8 bytes) to keep alignment.
+     */
     mrs     r0, spsr
-    stmfd   sp!, {r0}
+    mov     r1, #0              /* Zero padding */
+    stmfd   sp!, {r0, r1}
     
     /*
      * Call C dispatcher
@@ -274,8 +279,8 @@ exception_entry_irq:
      * irq_dispatch() has completed (including EOI)
      */
     
-    /* Restore SPSR */
-    ldmfd   sp!, {r0}
+    /* Restore SPSR and Padding */
+    ldmfd   sp!, {r0, r1}
     msr     spsr_cxsf, r0
     
     /*

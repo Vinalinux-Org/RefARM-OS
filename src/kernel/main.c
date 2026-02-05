@@ -65,6 +65,36 @@ static void test_task(void)
     }
 }
 
+/* ============================================================
+ * Suicide Task (Integrated Test Case)
+ * ============================================================ */
+static struct task_struct suicide_task_struct;
+static uint8_t suicide_stack[1024] __attribute__((aligned(8)));
+
+/**
+ * Suicide Task entry point
+ * Now runs in USER MODE (PL0)
+ */
+static void suicide_task(void)
+{
+    uart_printf("\n[SUICIDE] Task started. Goodbye cruel world!\n");
+    
+    // Countdown to destruction
+    for (int i = 3; i > 0; i--) {
+        uart_printf("[SUICIDE] Crashing in %d...\n", i);
+        for(volatile int j=0; j<100000; j++); 
+    }
+
+    uart_printf("[SUICIDE] Dereferencing NULL pointer now...\n");
+    
+    /* CAUSE DATA ABORT: Write to address 0x00000000 */
+    volatile int *bad_ptr = (int *)0x00000000;
+    *bad_ptr = 0xDEAD;
+    
+    uart_printf("[SUICIDE] ERROR: I should be dead by now!\n");
+    while(1);
+}
+
 /**
  * Get test task structure
  */
@@ -140,6 +170,20 @@ void kernel_main(void)
     if (scheduler_add_task(t_task) < 0) {
         uart_printf("[BOOT] ERROR: Failed to add test task\n");
         while(1);
+    }
+    
+    /* Create and add 'suicide' task */
+    uart_printf("[BOOT] Creating suicide task...\n");
+    suicide_task_struct.name = "suicide";
+    suicide_task_struct.state = TASK_STATE_READY;
+    suicide_task_struct.id = 0;
+    
+    task_stack_init(&suicide_task_struct, suicide_task, 
+                   suicide_stack, sizeof(suicide_stack));
+    
+    uart_printf("[BOOT] Adding suicide task to scheduler...\n");
+    if (scheduler_add_task(&suicide_task_struct) < 0) {
+        uart_printf("[BOOT] ERROR: Failed to add suicide task\n");
     }
 
     uart_printf("[BOOT] Boot complete!\n");

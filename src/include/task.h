@@ -70,6 +70,7 @@ struct task_context {
 #define TASK_STATE_READY    0   /* Ready to run */
 #define TASK_STATE_RUNNING  1   /* Currently executing */
 #define TASK_STATE_BLOCKED  2   /* Waiting for event (not used yet) */
+#define TASK_STATE_ZOMBIE   3   /* Task terminated/killed */
 
 /**
  * Task Control Block - complete task descriptor

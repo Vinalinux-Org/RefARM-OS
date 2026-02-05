@@ -259,6 +259,34 @@ uint32_t uart_get_irq_fire_count(void)
  * ============================================================
  */
 
+/* 
+ * Simple internal division/modulo to avoid libgcc dependency (__aeabi_uidivmod).
+ * This ensures no register clobbering surprises (like r9) in critical sections.
+ */
+static void simple_udivmod(uint32_t n, uint32_t d, uint32_t *q, uint32_t *r)
+{
+    uint32_t quotient = 0;
+    uint32_t remainder = 0;
+    
+    if (d == 0) {
+        *q = 0; *r = 0; 
+        return;
+    }
+    
+    // Slow but safe shift-subtract division
+    for (int i = 31; i >= 0; i--) {
+        remainder <<= 1;
+        remainder |= (n >> i) & 1;
+        if (remainder >= d) {
+            remainder -= d;
+            quotient |= (1 << i);
+        }
+    }
+    
+    *q = quotient;
+    *r = remainder;
+}
+
 static void print_uint(uint32_t num, int base)
 {
     char buf[32];
@@ -271,8 +299,10 @@ static void print_uint(uint32_t num, int base)
     }
     
     while (num > 0) {
-        buf[i++] = digits[num % base];
-        num /= base;
+        uint32_t q, r;
+        simple_udivmod(num, (uint32_t)base, &q, &r);
+        buf[i++] = digits[r];
+        num = q;
     }
     
     while (i > 0) {

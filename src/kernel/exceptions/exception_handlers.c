@@ -7,6 +7,9 @@
 
 #include "exception.h"
 #include "uart.h"
+#include "scheduler.h"
+#include "task.h"
+#include "assert.h"
 
 /* ============================================================
  * Helper Functions
@@ -154,12 +157,32 @@ void handle_prefetch_abort(struct exception_context *ctx)
     uart_printf("  - Alignment fault\n");
     
     uart_printf("\n");
+    uart_printf("\n");
     uart_printf("CPU Mode: %s\n", decode_cpu_mode(ctx->spsr));
     print_exception_context(ctx);
     
-    /* TODO: Read IFSR (Instruction Fault Status Register) for details */
-    /* TODO: Read IFAR (Instruction Fault Address Register) for faulting address */
+    /* FAULT CONTAINMENT LOGIC */
+    if ((ctx->spsr & 0x1F) == 0x10) {
+        /* User Mode Fault */
+        struct task_struct *current = scheduler_current_task();
+        uart_printf("\n[FAULT] User Mode Prefetch Abort DETECTED!\n");
+        uart_printf("[FAULT] Offending Task: %d ('%s')\n", 
+                    current ? current->id : -1, 
+                    current ? current->name : "???");
+        
+        uart_printf("[FAULT] Action: Terminating Task...\n");
+        
+        if (current) {
+            scheduler_terminate_task(current->id);
+        } else {
+            PANIC("User Fault processing failed (No Current Task)");
+        }
+        
+        return; 
+    }
     
+    /* Kernel Mode Fault - PANIC */
+    uart_printf("[FAULT] KERNEL PANIC: Prefetch Abort in Privileged Mode!\n");
     halt_kernel();
 }
 
@@ -188,12 +211,33 @@ void handle_data_abort(struct exception_context *ctx)
     uart_printf("  - Writing to read-only memory\n");
     
     uart_printf("\n");
+    uart_printf("\n");
     uart_printf("CPU Mode: %s\n", decode_cpu_mode(ctx->spsr));
     print_exception_context(ctx);
     
-    /* TODO: Read DFSR (Data Fault Status Register) for details */
-    /* TODO: Read DFAR (Data Fault Address Register) for faulting address */
+    /* FAULT CONTAINMENT LOGIC */
+    if ((ctx->spsr & 0x1F) == 0x10) {
+        /* User Mode Fault */
+        struct task_struct *current = scheduler_current_task();
+        uart_printf("\n[FAULT] User Mode Data Abort DETECTED!\n");
+        uart_printf("[FAULT] Offending Task: %d ('%s')\n", 
+                    current ? current->id : -1, 
+                    current ? current->name : "???");
+        
+        uart_printf("[FAULT] Action: Terminating Task...\n");
+        
+        if (current) {
+            scheduler_terminate_task(current->id);
+        } else {
+            PANIC("User Fault processing failed (No Current Task)");
+        }
+        
+        /* Execution will resume in scheduler loop after termination */
+        return; 
+    }
     
+    /* Kernel Mode Fault - PANIC */
+    uart_printf("[FAULT] KERNEL PANIC: Data Abort in Privileged Mode!\n");
     halt_kernel();
 }
 

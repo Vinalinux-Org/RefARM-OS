@@ -14,12 +14,12 @@ LINKER = ../linker
 ASM_BOOT_SRC = $(SRC)/arch/arm/boot/reset.S $(SRC)/arch/arm/boot/entry.S
 ASM_EXC_SRC = $(SRC)/arch/arm/exceptions/vectors.S $(SRC)/arch/arm/exceptions/exception_entry.S
 C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.c $(SRC)/kernel/irq/irq_core.c \
-               $(SRC)/kernel/shell/shell.c $(SRC)/kernel/shell/commands.c
+               $(SRC)/kernel/shell/shell.c $(SRC)/kernel/shell/commands.c $(SRC)/kernel/core/svc_handler.c
 C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/intc.c $(SRC)/drivers/timer.c
 
 # Objects
 ASM_OBJ = vectors.o reset.o entry.o exception_entry.o context_switch.o
-C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o
+C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -80,6 +80,10 @@ task.o: $(SRC)/kernel/scheduler/task.c
 
 idle.o: $(SRC)/kernel/scheduler/idle.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+svc_handler.o: $(SRC)/kernel/core/svc_handler.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 
 # C files - Drivers
 uart.o: $(SRC)/drivers/uart.c

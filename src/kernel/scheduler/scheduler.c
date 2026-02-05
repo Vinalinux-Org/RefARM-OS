@@ -125,25 +125,6 @@ void scheduler_start(void)
     
     uart_printf("[SCHED] Starting task 0: '%s'\n", current_task->name);
     
-    /* 
-     * CRITICAL DEBUG: Dump stack frame before loading
-     * Verify values are still correct before start_first_task() reads them
-     */
-    /* 
-     * CRITICAL DEBUG: Dump stack frame before loading
-     * Verify values are still correct before start_first_task() reads them
-     */
-    TRACE_SCHED("Pre-flight check - dumping first task stack:");
-    uint32_t *check_ptr = (uint32_t *)current_task->context.sp;
-    
-    /* Verify SPSR is SVC Mode (ignoring interrupt masks) */
-    /* We expect 0x13 (SVC) or 0xD3 (SVC + NoIRQ + NoFIQ) */
-    /* Verify SPSR assertion REMOVED 
-     * Top of stack is now R4 (part of callee-saved context), not SPSR.
-     * We trust task_stack_init() did the right thing.
-     */
-    // ASSERT((*check_ptr & 0x1F) == 0x13);
-    
     TRACE_SCHED("Jumping to first task (NO RETURN)...");
     
     /* Load first task context and jump to it
@@ -197,6 +178,52 @@ void scheduler_tick(void)
 }
 
 /* ============================================================
+ * scheduler_terminate_task - Kill a task
+ * ============================================================
+ * 
+ * Called when a task crashes (Data/Prefetch Abort)
+ */
+void scheduler_terminate_task(uint32_t id)
+{
+    if (id >= MAX_TASKS || tasks[id] == NULL) {
+        return;
+    }
+    
+    struct task_struct *task = tasks[id];
+    
+    uart_printf("[SCHED] TERMINATING Task %d: '%s'\n", task->id, task->name);
+    
+    /* Mark as ZOMBIE */
+    task->state = TASK_STATE_ZOMBIE;
+    
+    /* If current task is killing itself, yield immediately */
+    if (current_task == task) {
+        uart_printf("[SCHED] Task %d IS SUICIDE - Yielding...\n", task->id);
+        
+        /* 
+         * CRITICAL: We are likely in ABT/UND Mode (Exception Context).
+         * We MUST switch to SVC Mode before calling scheduler_yield/context_switch.
+         * Otherwise, context_switch will use SP_abt/und which is wrong for the next task.
+         * 
+         * Logic:
+         * 1. Switch to SVC Mode (keeping IRQs disabled).
+         * 2. Call scheduler_yield().
+         * 
+         * Note: We don't care about saving the current ABT stack/regs because 
+         * this task is DEAD. We just need a safe environment to switch FROM.
+         */
+        
+        /* Switch to SVC Mode (0x13) | IRQ Disabled (0x80) | FIQ Disabled (0x40) */
+        __asm__ volatile (
+            "cps #0x13 \n\t"
+        );
+        
+        need_reschedule = true; /* Force yield */
+        scheduler_yield();
+    }
+}
+
+/* ============================================================
  * scheduler_yield - Voluntary Task Switch
  * ============================================================
  * 
@@ -245,11 +272,17 @@ void scheduler_yield(void)
     prev_task = current_task;
     
     /* Find next ready task (simple round-robin) */
-    next_index = (current_task_index + 1) % MAX_TASKS;
+    /* Find next ready task (simple round-robin) */
+    next_index = current_task_index;
     
-    /* Handle wrap-around */
-    if (next_index >= task_count) {
-        next_index = 0;
+    /* Loop to find a non-ZOMBIE, READY task */
+    for (int i = 0; i < MAX_TASKS; i++) {
+        next_index = (next_index + 1) % MAX_TASKS;
+        
+        if (tasks[next_index] != NULL && 
+            tasks[next_index]->state != TASK_STATE_ZOMBIE) {
+            break; /* Found valid task */
+        }
     }
     
     next_task = tasks[next_index];
@@ -263,7 +296,10 @@ void scheduler_yield(void)
     }
     
     /* Update states */
-    prev_task->state = TASK_STATE_READY;
+    /* Update states */
+    if (prev_task->state != TASK_STATE_ZOMBIE) {
+        prev_task->state = TASK_STATE_READY;
+    }
     next_task->state = TASK_STATE_RUNNING;
 
     /* Update global scheduler state */

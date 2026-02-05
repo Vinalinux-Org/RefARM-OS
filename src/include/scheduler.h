@@ -37,6 +37,13 @@ void scheduler_init(void);
 int scheduler_add_task(struct task_struct *task);
 
 /**
+ * Terminate a task (Fault Handling)
+ * 
+ * @param id Task ID to terminate
+ */
+void scheduler_terminate_task(uint32_t id);
+
+/**
  * Start the scheduler
  * 
  * This function does NOT return. It:
