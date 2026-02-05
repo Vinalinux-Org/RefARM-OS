@@ -1,0 +1,26 @@
+stateDiagram-v2
+    direction LR
+
+    state "<b>READY</b><br/>(Wait Queue)" as READY
+    state "<b>ZOMBIE</b><br/>(Halted / Debug)" as ZOMBIE
+    
+    state RUNNING_USR {
+        direction TB
+        [*] --> UserExecution
+        state "User Logic<br/>(Normal Cycles)" as UserExecution
+    }
+
+    [*] --> READY : Init
+
+    READY --> RUNNING_USR : "Scheduler Dispatch<br/>(Restore Ctx -> MOVS PC, LR)"
+
+    RUNNING_USR --> READY : "Context Switch<br/>(IRQ Time Slice / SVC Yield)"
+
+    RUNNING_USR --> ZOMBIE : "<b>CRITICAL FAULT</b><br/>(Data Abort / Undef Instr)"
+
+    ZOMBIE --> [*] : Manual Reset
+
+    style READY fill:#e6f7ff,stroke:#1890ff,stroke-width:2px
+    style RUNNING_USR fill:#f6ffed,stroke:#52c41a,stroke-width:2px
+    style ZOMBIE fill:#fff1f0,stroke:#ff4d4f,stroke-width:2px,stroke-dasharray: 5 5
+    style UserExecution fill:#fff,stroke:#333

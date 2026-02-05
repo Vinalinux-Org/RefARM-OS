@@ -1,0 +1,55 @@
+sequenceDiagram
+    participant User as User Task (PL0)
+    participant HW as CPU Hardware
+    participant Vec as Exception Vectors
+    participant Kernel as Kernel Handler (PL1)
+    participant Sched as Scheduler
+
+    Note over User, HW: CPSR.M = USR (0x10)
+
+    %% Scenario 1: Syscall Yield
+    rect rgb(240, 248, 255)
+    Note over User, Sched: Scenario 1: Software Interrupt (SVC)
+    User->>HW: SVC #0 (Yield)
+    activate HW
+    Note right of HW: SPSR_svc = CPSR<br/>LR_svc = PC (Next Instr)<br/>CPSR.M = SVC
+    HW->>Vec: Jump to 0x08
+    deactivate HW
+    
+    Vec->>Kernel: b svc_handler
+    activate Kernel
+    Kernel->>Kernel: PUSH {R0-R12, LR} (Save Context)
+    Kernel->>Sched: scheduler_yield()
+    
+    Note right of Sched: Swap SP (Current -> Next)
+    
+    Sched-->>Kernel: New Task Context Ready
+    Kernel->>Kernel: POP {R0-R12, LR} (Load Context)
+    Kernel->>HW: MOVS PC, LR (Exception Return)
+    deactivate Kernel
+    
+    HW-->>User: Resume User Task
+    end
+
+    %% Scenario 2: IRQ Preemption
+    rect rgb(255, 240, 240)
+    Note over User, Sched: Scenario 2: Hardware Interrupt (IRQ)
+    User->>HW: External IRQ Triggered
+    activate HW
+    Note right of HW: SPSR_irq = CPSR<br/>LR_irq = PC + 4<br/>CPSR.M = IRQ
+    HW->>Vec: Jump to 0x18
+    deactivate HW
+    
+    Vec->>Kernel: b irq_handler
+    activate Kernel
+    Note right of Kernel: Handle Hardware (Clear Flags)
+    Kernel-->>Sched: Time Slice Expired?
+    
+    Kernel->>HW: LDM ... PC^ (Exception Return)
+    deactivate Kernel
+    
+    activate HW
+    Note right of HW: CPSR = SPSR_irq<br/>PC = LR_irq - 4
+    HW-->>User: Resume User Task
+    deactivate HW
+    end

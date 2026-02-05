@@ -41,6 +41,7 @@ Một user task tiến triển theo vòng đời sau:
 2.  Kernel thiết lập CPU state để enter USR và nhảy vào entry point của task.
 3.  Task chạy trong USR cho đến khi:
     *   IRQ xảy ra (asynchronous) và kernel lấy lại control tạm thời.
+    *   Hoặc **System Call (SVC #0)** xảy ra để Yield.
     *   Hoặc Fault xảy ra (synchronous) và kernel containment task.
     *   Hoặc Task chạy vô hạn (expected).
 
@@ -72,6 +73,13 @@ Một user task tiến triển theo vòng đời sau:
     *   Kernel **không return** về user context cũ.
 
 *Điểm bắt buộc: Không được silent resume.*
+
+### 5.4. Flow C: Voluntary Yield (via Syscall)
+1.  User task gọi `SVC #0`.
+2.  CPU switch sang **SVC mode**.
+3.  Kernel Service Handler (`svc_handler`) decode request.
+4.  Kernel gọi `scheduler_yield()`.
+5.  Scheduler switch sang task khác. User task cũ về READY.
 
 ## 6. Scheduler authority trong user execution
 

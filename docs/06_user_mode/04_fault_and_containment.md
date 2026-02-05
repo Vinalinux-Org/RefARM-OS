@@ -92,11 +92,11 @@ Dù fault xảy ra, kernel vẫn phải giữ:
 *   Scheduler invariants (at most one RUNNING task).
 *   IRQ dispatch contract (EOI đúng).
 
-### 6.3. Fault handling is deterministic and minimal
-Trong fault handler path:
-*   Không allocate memory động.
-*   Không gọi logic phức tạp.
-*   Chỉ làm việc tối thiểu: classify → record → apply policy → handoff to scheduler.
+### 6.4. Self-Contained Diagnostic Paths (Critical)
+Để đảm bảo Fault handling không gây ra lỗi đệ quy (Double Fault), các module phục vụ chẩn đoán (như **UART**) phải:
+*   **Không phụ thuộc vào thư viện ngoài (libgcc)**: Tránh các hàm như `__aeabi_uidivmod` vì chúng có thể nhạy cảm với stack alignment hoặc clobber register tùy tiện (như `r9`).
+*   **Minimalist Logic**: Sử dụng các thuật toán đơn giản, deterministic cho việc in ấn (ví dụ: shift-subtract division).
+*   **No Global State**: Hạn chế phụ thuộc vào dữ liệu toàn cục chưa được bảo vệ.
 
 ## 7. Required observability
 

@@ -118,8 +118,11 @@ Kernel không dựa vào “task tự giác” để không phá hệ thống. N
 
 ## 5. Explicit Non-Goals (Không nằm trong mục tiêu)
 
+## 5. Explicit Non-Goals (Không nằm trong mục tiêu)
+
 Các nội dung sau nằm ngoài phạm vi và không được giả định:
-*   System call interface (SVC ABI), user-kernel API, hoặc userland runtime.
+*   **Complex System call interface**: Chỉ hỗ trợ tối thiểu `SVC #0` (Yield). Các syscall khác (như I/O) chưa được hỗ trợ chính thức.
+*   User-kernel API mở rộng hay userland runtime.
 *   IPC, message passing, hoặc shared memory protocols.
 *   POSIX-like process model, ELF loading, dynamic linking.
 *   Memory isolation đầy đủ giữa kernel và user (per-process address space, per-task page tables).

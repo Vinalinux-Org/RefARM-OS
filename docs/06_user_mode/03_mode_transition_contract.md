@@ -37,9 +37,10 @@ Contract này áp dụng cho các tình huống:
 
 User-mode execution có hai nhóm transition events:
 
-### 3.1. Voluntary transitions (không tồn tại trong phạm vi này)
-*   Không có “voluntary return” từ USR về kernel thông qua một API hợp lệ.
-*   Nếu user code chủ động tạo ra exception để quay về kernel (ví dụ dùng SVC như yield), thì đó là một cơ chế giao tiếp và thuộc scope của syscall phase, không thuộc phạm vi tài liệu này.
+### 3.1. Voluntary transitions (Supported: Yield Only)
+*   User code chủ động tạo ra exception để quay về kernel thông qua `SVC #0`.
+*   Đây là cơ chế primitive cho **Voluntary Yield**.
+*   Các syscall khác chưa được hỗ trợ.
 
 ### 3.2. Involuntary transitions (được sử dụng)
 Kernel lấy lại quyền điều khiển từ user bằng các gate do phần cứng định nghĩa:
@@ -111,6 +112,7 @@ Khi CPU chuyển từ USR sang một exception mode, exception entry layer phả
 *   General-purpose registers r0–r12.
 *   User SP/LR (r13_usr, r14_usr) nếu cần phục hồi user execution chính xác.
 *   Return state (`SPSR_<mode>`) để kernel có thể quyết định return hoặc containment.
+*   **STACK ALIGNMENT (AAPCS):** Exception stack (IRQ/SVC/ABT) phải giữ alignment **8-byte** trước khi gọi bất kỳ hàm C nào (dispatcher). Nếu số lượng registers được push là lẻ, implementation phải push thêm padding.
 
 ### 5.3. Classification rule
 Ngay khi vào kernel từ user, kernel phải phân loại nguyên nhân vào 1 trong 2 nhóm:
