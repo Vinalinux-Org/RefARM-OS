@@ -92,6 +92,14 @@ void task_stack_init(struct task_struct *task,
      * ============================================================ */
     task->context.sp = (uint32_t)stack_ptr;
     
+    /* 
+     * CORRECTION: Initialize User Stack Pointer (SP_usr) 
+     * SPSR is set to User Mode. When we return to User Mode, 
+     * SP_usr must point to valid stack. 
+     * We share the same stack area. The User Stack starts where Kernel Stack ends.
+     */
+    task->context.sp_usr = (uint32_t)stack_ptr;
+    
     task->stack_base = stack_base;
     task->stack_size = stack_size;
     task->state = TASK_STATE_READY;

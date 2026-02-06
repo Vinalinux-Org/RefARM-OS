@@ -85,6 +85,21 @@ SECTIONS
     } > DDR
 
     /* --------------------------------------------------------
+     * User Stacks (Isolated Region)
+     * --------------------------------------------------------
+     * Grouping all user stacks here allows simple pointer validation:
+     * if (ptr >= _user_stack_start && ptr < _user_stack_end) valid;
+     */
+    .user_stack (NOLOAD) :
+    {
+        . = ALIGN(8);
+        _user_stack_start = .;
+        *(.user_stack)
+        . = ALIGN(8);
+        _user_stack_end = .;
+    } > DDR
+
+    /* --------------------------------------------------------
      * Stack section
      * --------------------------------------------------------
      * Stack grows downward.

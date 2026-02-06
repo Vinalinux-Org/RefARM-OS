@@ -8,11 +8,12 @@
 #include "idle.h"
 #include "task.h"
 #include "uart.h"
+#include "user_lib.h"
 #include <stdbool.h>
 
 /* Idle task stack (1KB) */
 #define IDLE_STACK_SIZE 1024
-static uint8_t idle_stack[IDLE_STACK_SIZE] __attribute__((aligned(8)));
+static uint8_t idle_stack[IDLE_STACK_SIZE] __attribute__((aligned(8), section(".user_stack")));
 
 /* Idle task structure */
 static struct task_struct idle_task_struct;
@@ -48,16 +49,8 @@ static void idle_task(void)
          */
         extern volatile bool need_reschedule;
         if (need_reschedule) {
-        if (need_reschedule) {
-            /* 
-             * Voluntary Yield via System Call 
-             * Must use SVC #0 because we are in USR mode
-             */
-            __asm__ volatile("svc #0");
-            
-            /* ← Task resumes here after being switched back */
-        }
-            /* ← Task resumes here after being switched back */
+            /* Voluntary Yield */
+            sys_yield();
         }
         
         /* 

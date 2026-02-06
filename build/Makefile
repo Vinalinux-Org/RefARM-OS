@@ -19,7 +19,7 @@ C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/in
 
 # Objects
 ASM_OBJ = vectors.o reset.o entry.o exception_entry.o context_switch.o
-C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o
+C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o user_lib.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -96,6 +96,9 @@ intc.o: $(SRC)/drivers/intc.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 timer.o: $(SRC)/drivers/timer.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+user_lib.o: $(SRC)/user/user_lib.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link

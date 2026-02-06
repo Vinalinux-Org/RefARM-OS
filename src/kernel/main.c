@@ -1,7 +1,7 @@
 /* ============================================================
  * main.c
  * ------------------------------------------------------------
- * RefARM-OS: Scheduler - Two Task Context Switch Test
+ * RefARM-OS: Phase 3 Verification - System Call Interface
  * Target: BeagleBone Black (AM335x)
  * ============================================================ */
 
@@ -14,188 +14,112 @@
 #include "intc.h"
 #include "shell.h"
 #include "task.h"
+#include "user_lib.h"
 #include <stdbool.h>
 
 /* ============================================================
- * Test Task Logic (Integrated)
+ * Task A: Persistent Writer
+ * - Tests SYS_WRITE (Loop)
+ * - Tests SYS_YIELD
  * ============================================================ */
+#define TASK_A_STACK_SIZE 1024
+static uint8_t task_a_stack[TASK_A_STACK_SIZE] __attribute__((aligned(8), section(".user_stack")));
+static struct task_struct task_a_struct;
 
-/* Test task stack (1KB) */
-#define TEST_STACK_SIZE 1024
-#define PRINT_INTERVAL 1000000
-static uint8_t test_stack[TEST_STACK_SIZE] __attribute__((aligned(8)));
-
-/* Test task structure */
-static struct task_struct test_task_struct;
-
-/**
- * Test task entry point
- */
-/* ============================================================
- * User Space Wrapper
- * ============================================================ */
-void syscall_yield(void) 
+static void task_a_entry(void)
 {
-    /* SVC #0 - Yield System Call */
-    __asm__ volatile("svc #0");
-}
-
-/**
- * Test task entry point
- * Now runs in USER MODE (PL0)
- */
-static void test_task(void)
-{
-    uint32_t counter = 0;
+    /* STATIC buffer (avoids stack issues) */
+    static const char msg[] = "[TASK A] Alive! Yielding...\n";
     
-    uart_printf("[TEST] Test task started (USR Mode)\n");
-    uart_printf("[TEST] This task should NOT be able to access CPSR M-bits!\n");
-    
-    /* Main test loop */
     while (1) {
-        counter++;
+        /* Write to UART via Kernel */
+        sys_write(msg, sizeof(msg) - 1);
         
-        /* Print status periodically */
-        if (counter % (PRINT_INTERVAL/10) == 0) { // Speed up for test
-            uart_printf("[TEST] User Task Running... (Counter %u)\n", counter);
-             
-            /* Voluntary Yield via Syscall */
-            syscall_yield();
-        }
+        /* Yield to let other tasks run */
+        sys_yield();
+        
+        /* Busy wait to slow down output (simulation) */
+        for (volatile int i = 0; i < 50000; i++);
     }
 }
 
 /* ============================================================
- * Suicide Task (Integrated Test Case)
+ * Task B: One-Shot Exiter
+ * - Tests SYS_WRITE (Once)
+ * - Tests SYS_EXIT (Termination)
  * ============================================================ */
-static struct task_struct suicide_task_struct;
-static uint8_t suicide_stack[1024] __attribute__((aligned(8)));
+#define TASK_B_STACK_SIZE 1024
+static uint8_t task_b_stack[TASK_B_STACK_SIZE] __attribute__((aligned(8), section(".user_stack")));
+static struct task_struct task_b_struct;
 
-/**
- * Suicide Task entry point
- * Now runs in USER MODE (PL0)
- */
-static void suicide_task(void)
+static void task_b_entry(void)
 {
-    uart_printf("\n[SUICIDE] Task started. Goodbye cruel world!\n");
-    
-    // Countdown to destruction
-    for (int i = 3; i > 0; i--) {
-        uart_printf("[SUICIDE] Crashing in %d...\n", i);
-        for(volatile int j=0; j<100000; j++); 
-    }
+    static const char start_msg[] = "\n[TASK B] Hello! I'm here for a good time, not a long time.\n";
+    static const char exit_msg[]  = "[TASK B] Exiting now via sys_exit(42)...\n\n";
 
-    uart_printf("[SUICIDE] Dereferencing NULL pointer now...\n");
+    sys_write(start_msg, sizeof(start_msg) - 1);
     
-    /* CAUSE DATA ABORT: Write to address 0x00000000 */
-    volatile int *bad_ptr = (int *)0x00000000;
-    *bad_ptr = 0xDEAD;
+    /* Simulate some work */
+    for (volatile int i = 0; i < 100000; i++);
     
-    uart_printf("[SUICIDE] ERROR: I should be dead by now!\n");
+    sys_write(exit_msg, sizeof(exit_msg) - 1);
+    
+    /* Request termination */
+    sys_exit(42);
+    
+    /* Should never reach here */
+    static const char fail_msg[] = "[TASK B] FATAL: I am still alive?!\n";
+    sys_write(fail_msg, sizeof(fail_msg) - 1);
     while(1);
 }
 
-/**
- * Get test task structure
- */
-static struct task_struct *create_test_task(void)
-{
-    test_task_struct.name = "test";
-    test_task_struct.state = TASK_STATE_READY;
-    test_task_struct.id = 0;
-    
-    task_stack_init(&test_task_struct, test_task, test_stack, TEST_STACK_SIZE);
-    
-    return &test_task_struct;
-}
-
+/* ============================================================
+ * Kernel Main
+ * ============================================================ */
 void kernel_main(void)
 {
-    /* ========================================================
-     * Phase 0: Early boot
-     * ======================================================== */
+    /* 1. Hardware Init */
     watchdog_disable();
     uart_init();
-
+    
     uart_printf("\n\n");
     uart_printf("========================================\n");
-    uart_printf(" RefARM-OS Booting...\n");
-    uart_printf(" Phase 7: Two Task Test\n");
-    uart_printf(" Context Switch Verification\n");
+    uart_printf(" RefARM-OS Phase 3: Syscall Verification\n");
     uart_printf("========================================\n\n");
 
-    /* ========================================================
-     * Phase 1: Interrupt subsystem
-     * ======================================================== */
-    /* Initialize Interrupt Controller */
-    uart_printf("[BOOT] Initializing INTC...\n");
     intc_init();
-
-    /* Initialize IRQ framework */
-    uart_printf("[BOOT] Initializing IRQ framework...\n");
     irq_init();
-
-    /* Initialize Hardware Timer */
-    uart_printf("[BOOT] Initializing Timer...\n");
     timer_init();
     
-    /* Initialize Scheduler */
-    uart_printf("[BOOT] Initializing Scheduler...\n");
+    /* 2. Scheduler Init */
     scheduler_init();
 
-    /* 
-     * NOTE: Idle task is created automatically by scheduler_init()
-     * We only need to add user/test tasks here.
-     * UPDATE: Manually adding idle task for now to ensure explicit registration.
-     */
-    uart_printf("[BOOT] Creating idle task...\n");
-    #include "idle.h" /* Typically at top, but allowed here for scope if needed, keeping simple */
-    /* Better to put include at top, will fix in next step if strict C, but simpler here: */
-    /* Wait, let's put include at top in separate edit or just implicit dec warning? */
-    /* Actually, let's just add the code and assume header is clean or add include at top. */
-    /* Strategy: I will add the include at the top in a separate edit to be clean. */
-    /* Here I just add the logic. */
-    
+    /* 3. Add Idle Task (Task 0) */
     struct task_struct *idle_ptr = get_idle_task();
-    if (scheduler_add_task(idle_ptr) < 0) {
-        uart_printf("[BOOT] ERROR: Failed to add idle task\n");
-        while(1);
+    scheduler_add_task(idle_ptr);
+
+    /* 4. Add Task A (Writer) */
+    task_a_struct.name = "Task A (Writer)";
+    task_a_struct.state = TASK_STATE_READY;
+    task_a_struct.id = 0; // ID assigned by scheduler
+    task_stack_init(&task_a_struct, task_a_entry, task_a_stack, TASK_A_STACK_SIZE);
+    
+    if (scheduler_add_task(&task_a_struct) < 0) {
+        uart_printf("[BOOT] Failed to add Task A\n");
     }
 
-    /* Create and add Test Task */
-    uart_printf("[BOOT] Creating test task...\n");
-    struct task_struct *t_task = create_test_task();
-    
-    uart_printf("[BOOT] Adding test task to scheduler...\n");
-    if (scheduler_add_task(t_task) < 0) {
-        uart_printf("[BOOT] ERROR: Failed to add test task\n");
-        while(1);
-    }
-    
-    /* Create and add 'suicide' task */
-    uart_printf("[BOOT] Creating suicide task...\n");
-    suicide_task_struct.name = "suicide";
-    suicide_task_struct.state = TASK_STATE_READY;
-    suicide_task_struct.id = 0;
-    
-    task_stack_init(&suicide_task_struct, suicide_task, 
-                   suicide_stack, sizeof(suicide_stack));
-    
-    uart_printf("[BOOT] Adding suicide task to scheduler...\n");
-    if (scheduler_add_task(&suicide_task_struct) < 0) {
-        uart_printf("[BOOT] ERROR: Failed to add suicide task\n");
+    /* 5. Add Task B (Exiter) */
+    task_b_struct.name = "Task B (Exiter)";
+    task_b_struct.state = TASK_STATE_READY;
+    task_b_struct.id = 0;
+    task_stack_init(&task_b_struct, task_b_entry, task_b_stack, TASK_B_STACK_SIZE);
+
+    if (scheduler_add_task(&task_b_struct) < 0) {
+        uart_printf("[BOOT] Failed to add Task B\n");
     }
 
-    uart_printf("[BOOT] Boot complete!\n");
-    uart_printf("[BOOT] Total tasks: 2 (idle + test)\n");
-    uart_printf("[BOOT] Time slice: 10ms per task\n");
-    uart_printf("[BOOT] IRQs kept disabled (will enable on first task start)\n");
-    uart_printf("[BOOT] Starting scheduler...\n");
-
-    /* Start Scheduler (Never Returns) */
+    uart_printf("[BOOT] Starting Scheduler...\n");
     scheduler_start();
-
-    /* Should never reach here */
-    uart_printf("[BOOT] FATAL: Returned from scheduler_start!\n");
-    while (1);
+    
+    while(1);
 }

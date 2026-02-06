@@ -11,6 +11,7 @@
 #include "trace.h"
 #include "scheduler.h"
 #include "uart.h"
+#include "syscalls.h"
 
 /* 
  * SVC Context Structure (AAPCS Aligned)
@@ -35,36 +36,142 @@ struct svc_context {
     uint32_t lr;        /* LR_svc - Points to instruction AFTER svc */
 };
 
+/* 
+ * Validation boundaries (exported from linker script) 
+ * Used to ensure user pointers are within allowed regions.
+ */
+extern uint8_t _user_stack_start[];
+extern uint8_t _user_stack_end[];
+extern uint8_t _text_start[]; /* For .rodata strings */
+extern uint8_t _text_end[];
+
 /* ============================================================
- * SVC Dispatcher
+ * Helper: Validate User Pointer
+ * ============================================================
+ * Enforces strict memory rules:
+ * Pointers must point to the User Stack region (.user_stack).
+ * This sandboxes User interactions preventing Kernel corruption.
+ */
+static int validate_user_pointer(const void *ptr, uint32_t len)
+{
+    uint32_t start = (uint32_t)ptr;
+    uint32_t end = start + len;
+    
+    /* Check for overflow */
+    if (end < start) {
+        return E_PTR;
+    }
+
+    uint32_t allowed_start = (uint32_t)_user_stack_start;
+    uint32_t allowed_end = (uint32_t)_user_stack_end;
+
+    /* Check bounds [start, end) within [allowed_start, allowed_end) */
+    if (start >= allowed_start && end <= allowed_end) {
+        return E_OK;
+    }
+    
+    /* Allow RO Data (Code section) for static strings */
+    uint32_t text_start = (uint32_t)_text_start;
+    uint32_t text_end = (uint32_t)_text_end;
+    if (start >= text_start && end <= text_end) {
+        return E_OK;
+    }
+    
+    return E_PTR;
+}
+
+/* ============================================================
+ * Syscall Handlers
+ * ============================================================ */
+
+/* sys_write(const void *buf, uint32_t len) */
+static int32_t sys_write(struct svc_context *ctx)
+{
+    const void *buf = (const void *)ctx->r0;
+    uint32_t len = (uint32_t)ctx->r1;
+    
+    /* 1. Validation */
+    if (validate_user_pointer(buf, len) != E_OK) {
+        uart_printf("[SVC] Security Violation: Invalid Ptr 0x%08x\n", buf);
+        return E_PTR;
+    }
+    
+    /* 2. Logic (Direct Driver Call for now) */
+    /* Only allow reasonable length to prevent DoS */
+    if (len > 256) { 
+        return E_ARG; 
+    }
+
+    /* We can safely cast because we validated range */
+    const char *str = (const char *)buf;
+    for (uint32_t i = 0; i < len; i++) {
+        if (str[i] == '\n') {
+            uart_putc('\r');
+        }
+        uart_putc(str[i]);
+    }
+    
+    return (int32_t)len;
+}
+
+/* sys_exit(int status) */
+static int32_t sys_exit(struct svc_context *ctx)
+{
+    int32_t status = (int32_t)ctx->r0;
+    struct task_struct *current = scheduler_current_task();
+    
+    uart_printf("[SVC] Task %d exiting with status %d\n", current->id, status);
+    
+    /* Terminate specific task */
+    scheduler_terminate_task(current->id);
+    
+    /* Scheduler should switch away, but if we return, it's an error flow */
+    return 0; 
+}
+
+/* sys_yield() */
+static int32_t sys_yield(struct svc_context *ctx)
+{
+    /* Voluntary Yield */
+    scheduler_yield();
+    return E_OK;
+}
+
+/* ============================================================
+ * SVC Handler (Dispatcher)
  * ============================================================ */
 void svc_handler(struct svc_context *ctx)
 {
     /* 
-     * Decode the SVC number from the instruction
-     * SVC Instruction: 0xEFxxxxxx (Little Endian)
-     * LR in context points to next instruction (PC+4)
-     * So accessing (uint32_t *)(LR - 4) gives the SVC instruction
+     * ABI: 
+     * R7 = Syscall Number
+     * R0-R3 = Arguments
+     * Return value -> R0
      */
-    uint32_t *svc_inst_ptr = (uint32_t *)(ctx->lr - 4);
-    uint32_t svc_inst = *svc_inst_ptr;
-    
-    /* Extract lower 24 bits (the immediate value N in svc #N) */
-    uint32_t syscall_num = svc_inst & 0x00FFFFFF;
-    
-    // TRACE_SCHED("SVC Trap: #%d at PC=0x%08x", syscall_num, ctx->lr - 4);
+    uint32_t syscall_num = ctx->r7;
+    int32_t result = E_INVAL;
+
+    // TRACE_SCHED("SVC Entry: ID=%d, Args=0x%x, 0x%x", syscall_num, ctx->r0, ctx->r1);
 
     switch (syscall_num) {
-        case 0:
-            /* SVC #0: scheduler_yield() */
-            scheduler_yield();
+        case SYS_WRITE:
+            result = sys_write(ctx);
+            break;
+            
+        case SYS_EXIT:
+            result = sys_exit(ctx);
+            break;
+            
+        case SYS_YIELD:
+            result = sys_yield(ctx);
             break;
             
         default:
-            uart_printf("\n[SVC] FATAL: Unknown System Call #%d\n", syscall_num);
-            uart_printf("[SVC] PC=0x%08x, LR=0x%08x\n", ctx->lr - 4, ctx->lr);
-            /* For Phase 2, we just halt. Later we kill the task. */
-            PANIC("Unknown SVC");
+            uart_printf("[SVC] ERROR: Unknown Syscall %d\n", syscall_num);
+            result = E_INVAL;
             break;
     }
+    
+    /* Write return value back to User Context R0 */
+    ctx->r0 = result;
 }

@@ -49,15 +49,32 @@ context_switch:
      */
     dsb
     
+    /* 
+     * 3.5. CRITICAL: Save User Stack Pointer (SP_usr) AND Link Register (LR_usr)
+     * Switch to System Mode (0x1F) to access SP_usr and LR_usr
+     */
+    cps     #0x1F               @ Switch to System Mode
+    add     r2, r0, #64         @ Point to context.sp_usr
+    stmia   r2, {sp, lr}        @ Save SP_usr (r13) and LR_usr (r14)
+    cps     #0x13               @ Switch back to SVC Mode
+    
     /* ========================================
      * LOAD NEXT TASK
      * ======================================== */
     
     /* 
-     * 4. Load next task's SP
+     * 4. Load next task's SP (Kernel SP)
      * r1 contains next task pointer
      */
     ldr     sp, [r1, #52]
+    
+    /* 
+     * 4.5. CRITICAL: Restore User Stack Pointer (SP_usr) AND Link Register (LR_usr)
+     */
+    cps     #0x1F               @ Switch to System Mode
+    add     r2, r1, #64         @ Point to context.sp_usr
+    ldmia   r2, {sp, lr}        @ Restore SP_usr and LR_usr
+    cps     #0x13               @ Switch back to SVC Mode
     
     /* 
      * 5. Restore next task's Registers
@@ -66,11 +83,9 @@ context_switch:
     
     /* 
      * 6. Return to task (jump to LR)
-     * BX LR allows interworking (Thumb/ARM), though we are likely ARM-only.
-     * This returns to the instruction after context_switch() call.
      */
     bx      lr
-
+    
 /* ============================================================
  * start_first_task - Initialize first task execution
  * ============================================================
@@ -83,9 +98,17 @@ context_switch:
  */
 start_first_task:
     /* 
-     * 1. Load task's SP
+     * 1. Load task's SP (Kernel SP)
      */
     ldr     sp, [r0, #52]
+
+    /* 
+     * 1.5. CRITICAL: Restore User Stack Pointer (SP_usr) AND LR_usr
+     */
+    cps     #0x1F               @ Switch to System Mode
+    add     r2, r0, #64         @ Point to context.sp_usr
+    ldmia   r2, {sp, lr}        @ Restore SP_usr and LR_usr
+    cps     #0x13               @ Switch back to SVC Mode
     
     /* 
      * 2. Restore Registers (pop Frame 2: Kernel Context)

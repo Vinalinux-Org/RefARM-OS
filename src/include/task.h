@@ -57,7 +57,11 @@ struct task_context {
     /* Processor state (4 bytes) */
     uint32_t spsr;    // Saved Program Status Register
     
-    // Total size: 64 bytes (13+2+1 = 16 words)
+    /* User Mode Stack Pointer (Added for Phase 7 Fix) */
+    uint32_t sp_usr;  // r13_usr
+    uint32_t lr_usr;  // r14_usr
+    
+    // Total size: 72 bytes (18 words)
 };
 
 /* ============================================================
