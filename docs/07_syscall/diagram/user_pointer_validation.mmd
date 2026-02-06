@@ -1,0 +1,32 @@
+flowchart TD
+    Start([validate_user_pointer]) --> Input{ptr, len}
+    
+    subgraph Sanity [Kiểm tra tính hợp lệ cơ bản]
+        Input --> CheckNull{ptr == NULL?}
+        CheckNull -- No --> CalcEnd[end = ptr + len]
+        CalcEnd --> CheckOver{end < ptr?}
+    end
+
+    subgraph Whitelist [Kiểm tra vùng nhớ - Whitelist]
+        direction TB
+        CheckOver -- No --> IsStack{"Trong User Stack?<br/>(start <= ptr < end <= end)"}
+        IsStack -- No --> IsText{"Trong Text/ROData?<br/>(start <= ptr < end <= end)"}
+    end
+
+    CheckNull -- Yes ----> Fail
+    CheckOver -- Yes ----> Fail
+    IsText -- No --------> Fail
+
+    IsStack -- Yes ------> Pass
+    IsText -- Yes ------> Pass
+
+    Fail([Return E_PTR])
+    Pass([Return E_OK])
+    
+    classDef err fill:#f96,stroke:#333,stroke-width:2px;
+    classDef ok fill:#9f9,stroke:#333,stroke-width:2px;
+    classDef logic fill:#fff,stroke:#333,stroke-dasharray: 5 5;
+    
+    class Fail err;
+    class Pass ok;
+    class Sanity,Whitelist logic;

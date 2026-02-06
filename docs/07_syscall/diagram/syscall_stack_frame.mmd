@@ -1,0 +1,36 @@
+block-beta
+    columns 1
+    
+    block:Title
+        T1["Kernel Stack Frame (ARMv7-A)"]
+    end
+    
+    block:HighAddr
+        HA["High Address (Stack Top)"]
+    end
+    
+    block:Frame
+        LR_svc["LR_svc (Return PC) : Offset +60"]
+        R12["R12 (IP) : Offset +56"]
+        dots1["... intermediate regs ..."]
+        R1["R1 : Offset +12"]
+        R0["R0 (Arg0 / Return) : Offset +08"]
+    end
+    
+    block:Alignment
+        Pad["Padding (8-byte Alignment) : Offset +04"]
+        SPSR["SPSR_svc (Saved CPSR) : Offset +00"]
+    end
+    
+    block:LowAddr
+        LA["Low Address (Current SP)"]
+    end
+    
+    LR_svc -- "Top of Frame" --> HighAddr
+    SPSR -- "Stack Pointer" --> LowAddr
+    
+    style Title fill:none,stroke:none
+    style HighAddr fill:none,stroke:none
+    style LowAddr fill:none,stroke:none
+    style Frame fill:#f9f,stroke:#333,stroke-width:2px
+    style Alignment fill:#ccf,stroke:#333,stroke-width:2px
