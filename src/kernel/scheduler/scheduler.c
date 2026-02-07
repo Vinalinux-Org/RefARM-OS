@@ -59,6 +59,18 @@ void scheduler_init(void)
         tasks[i] = NULL;
     }
     
+    /* CRITICAL DEBUG: Verify Offsets for Assembly */
+    uart_printf("[DEBUG] Offsets check:\n");
+    uart_printf("  context.sp:     %d (Assembly expects 52)\n", 
+                __builtin_offsetof(struct task_struct, context.sp));
+    uart_printf("  context.sp_usr: %d (Assembly expects 64)\n", 
+                __builtin_offsetof(struct task_struct, context.sp_usr));
+    
+    if (__builtin_offsetof(struct task_struct, context.sp) != 52 ||
+        __builtin_offsetof(struct task_struct, context.sp_usr) != 64) {
+        PANIC("FATAL: Struct alignment mismatch with Assembly!");
+    }
+    
     task_count = 0;
     current_task = NULL;
     current_task_index = 0;
@@ -236,6 +248,9 @@ void scheduler_yield(void)
     struct task_struct *next_task;
     uint32_t next_index;
     
+    // uart_printf("[SCHED] Yield called (current_task=%u)\n", 
+    //             current_task ? current_task->id : 999);
+    
     /* Check if reschedule is actually needed */
     if (!need_reschedule) {
         return;
@@ -244,21 +259,14 @@ void scheduler_yield(void)
     /* Clear flag atomically */
     need_reschedule = false;
     
-    /* ============================================================
-     * Round-Robin Scheduling Logic
-     * ============================================================ */
-    
-    /* 
-     * STACK INTEGRITY CHECK (Canary)
-     * Check current task's stack bottom for overflow 
-     */
+    /* Stack integrity check (canary) */
     if (current_task != NULL) {
         uint32_t *canary_ptr = (uint32_t *)current_task->stack_base;
         if (*canary_ptr != STACK_CANARY_VALUE) {
             TRACE_SCHED("FATAL: Stack overflow detected in task %d ('%s')", 
                         current_task->id, current_task->name);
-            TRACE_SCHED("Canary at 0x%08x is 0x%08x (expected 0x%08x)", 
-                        (uint32_t)canary_ptr, *canary_ptr, STACK_CANARY_VALUE);
+            uart_printf("[SCHED] Canary Addr: 0x%08x. Expected: 0x%08x. Actual: 0x%08x\n",
+                        (uint32_t)canary_ptr, STACK_CANARY_VALUE, *canary_ptr);
             PANIC("Stack Canary Corrupted!");
         }
     }
@@ -272,30 +280,49 @@ void scheduler_yield(void)
     prev_task = current_task;
     
     /* Find next ready task (simple round-robin) */
-    /* Find next ready task (simple round-robin) */
     next_index = current_task_index;
+    uint32_t search_count = 0;
+    
+    // uart_printf("[SCHED] Finding next task...\n");
     
     /* Loop to find a non-ZOMBIE, READY task */
-    for (int i = 0; i < MAX_TASKS; i++) {
+    while (search_count < MAX_TASKS) {
         next_index = (next_index + 1) % MAX_TASKS;
+        search_count++;
         
+        /* Debug log for search (can be noisy) */
+        
+        // uart_printf("[SCHED]   Task %u: %s (state=%u)\n",
+        //             next_index,
+        //             tasks[next_index] ? tasks[next_index]->name : "NULL",
+        //             tasks[next_index] ? tasks[next_index]->state : 99);
+        
+
         if (tasks[next_index] != NULL && 
-            tasks[next_index]->state != TASK_STATE_ZOMBIE) {
-            break; /* Found valid task */
+            tasks[next_index]->state == TASK_STATE_READY) {
+            // uart_printf("[SCHED]   → Selected task %u\n", next_index);
+            break;
         }
     }
     
     next_task = tasks[next_index];
     
-    /* Sanity check */
+    /* Sanity check + fallback */
     if (next_task->state != TASK_STATE_READY) {
-        uart_printf("[SCHED] ERROR: Next task %u not ready! State: %u\n", next_task->id, next_task->state);
-        // Fallback: try to find another ready task or stick with current
-        // For now, just return to current task
-        return;
+        uart_printf("[SCHED] ERROR: Task %u not READY (state=%u)\n",
+                    next_task->id, next_task->state);
+        
+        /* Fallback: Force idle to READY if it exists */
+        if (tasks[0] != NULL) {
+            uart_printf("[SCHED] Warning: Forcing idle task READY to prevent deadlock\n");
+            tasks[0]->state = TASK_STATE_READY;
+            next_task = tasks[0];
+            next_index = 0;
+        } else {
+            PANIC("Scheduler Deadlock - No READY tasks!");
+        }
     }
     
-    /* Update states */
     /* Update states */
     if (prev_task->state != TASK_STATE_ZOMBIE) {
         prev_task->state = TASK_STATE_READY;
@@ -303,25 +330,63 @@ void scheduler_yield(void)
     next_task->state = TASK_STATE_RUNNING;
 
     /* Update global scheduler state */
-    /* Update global scheduler state */
     current_task_index = next_index;
     current_task = next_task;
     
-    TRACE_SCHED("Yield: %u -> %u", prev_task->id, next_task->id);
+    // uart_printf("[SCHED] Switching: %u (%s) -> %u (%s)\n",
+    //             prev_task->id, prev_task->name,
+    //             next_task->id, next_task->name);
     
-    /* 
-     * Perform context switch
-     * Safe here because we're in SVC mode (task context)
-     */
+    /* Debug: Check Stack Depth (DISABLED for reduced noise) */
+    // if (prev_task->id == 0) {
+    //     uint32_t current_sp;
+    //     __asm__ volatile("mov %0, sp" : "=r"(current_sp));
+    //     uart_printf("[SCHED] Idle SP before switch: 0x%08x (Base: 0x%08x, Limit: 0x%08x)\n", 
+    //                 current_sp, (uint32_t)prev_task->stack_base, (uint32_t)prev_task->stack_base - prev_task->stack_size);
+    // }
+    
+    /* CRITICAL DEBUG PROBE: Inspect Shell Stack (DISABLED for reduced noise) */
+    // if (next_task->id == 1) {
+    //     uint32_t *sp = (uint32_t *)next_task->context.sp;
+    //     uart_printf("[DEBUG] Probing Shell Stack before switch:\n");
+    //     uart_printf("  SP_svc = 0x%08x\n", (uint32_t)sp);
+    //     
+    //     /* 
+    //      * Logic:
+    //      * Kernel Frame (9 words) = 36 bytes. sp[0]..sp[8]
+    //      * SPSR, PAD (2 words) = 8 bytes. sp[9]..sp[10]
+    //      * User Frame (14 words) = 56 bytes. sp[11]..sp[24]
+    //      * PC should be at sp[24] (last popped val)
+    //      */
+    //     if (sp) {
+    //          uart_printf("  Frame[8] (LR_svc-Trampoline) = 0x%08x\n", sp[8]);
+    //          uart_printf("  Frame[9] (SPSR) = 0x%08x\n", sp[9]);
+    //          uart_printf("  Frame[24] (User Entry PC) = 0x%08x\n", sp[24]);
+    //          
+    //          /* DUMP FULL FRAME */
+    //          uart_printf("  Full Frame Dump:\n");
+    //          for(int i=0; i<=24; i++) {
+    //              uart_printf("    SP[%d] = 0x%08x\n", i, sp[i]);
+    //          }
+    //     }
+    // }
+    
+    /* Perform context switch */
     context_switch(prev_task, next_task);
     
-    /* NEVER REACHED - task will resume here on next switch back */
+    /* Resumed (DISABLED for reduced noise) */
+    // uart_printf("[SCHED] Resumed task %u (%s)\n", current_task->id, current_task->name);
 }
 
 /**
  * Get current running task
  * @return Pointer to current task, or NULL if scheduler not started
  */
+/* Debug hook for Assembly */
+void debug_check_sp(uint32_t sp_val) {
+    // uart_printf("[CTX-ASM] SP before restore: 0x%08x\n", sp_val);
+}
+
 struct task_struct *scheduler_current_task(void)
 {
     return current_task;

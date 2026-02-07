@@ -215,6 +215,15 @@ void uart_puts(const char *s)
 
 int uart_getc(void)
 {
+    static uint32_t call_count = 0;
+    call_count++;
+    
+    /* DEBUG: Print every 10000 calls to avoid spam */
+    // if (call_count % 10000 == 0) {
+    //     uart_printf("[UART_GETC] calls=%u, head=%u, tail=%u, irq_fires=%u\n",
+    //                 call_count, rx_buffer.head, rx_buffer.tail, uart_irq_fire_count);
+    // }
+    
     uint32_t flags = irq_save();
     
     if (rx_buffer.head == rx_buffer.tail) {

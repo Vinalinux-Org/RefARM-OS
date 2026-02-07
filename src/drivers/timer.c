@@ -191,7 +191,7 @@ static void timer_irq_handler(void *data)
      * TRACE gets compiled out if disabled
      */
     if (timer_ticks % 100 == 0) {
-        TRACE_SCHED("Tick %u", timer_ticks);
+        // TRACE_SCHED("Tick %u", timer_ticks);
     }
     
     /* Call scheduler prompt (State Machine: Set Flag) */

@@ -124,23 +124,9 @@ svc_exit_trampoline:
     msr     spsr_cxsf, r0
     
     /* 
-     * 2. Setup SP_usr (User Stack Pointer) to match SP_svc finish point.
-     * We are currently in SVC mode. SP_usr is Banked.
-     * Strategies:
-     *  - Use 'stm sp^' (User regs store) - messy.
-     *  - Switch to System Mode (shares registers with User), set SP, switch back.
+     * 2. Restore Context and Return 
+     * Note: SP_usr was already set by start_first_task or context_switch
      */
-     
-    /* Calculate where SP_svc will be AFTER popping {r0-r12, pc} */
-    /* 14 registers * 4 bytes = 56 bytes */
-    add     r2, sp, #56        /* R2 = Target SP_usr */
-    
-    /* Switch to System Mode (Mode 0x1F) - Access User Regs with Privilege */
-    cps     #0x1F
-    mov     sp, r2             /* Set SP_usr */
-    
-    /* Switch back to SVC Mode (Mode 0x13) */
-    cps     #0x13
     
     /* 3. Restore Context and Return 
      * "^" suffix copies SPSR_svc -> CPSR (Mode Switch)
@@ -243,52 +229,54 @@ exception_entry_data_abort:
  * ============================================================ */
 exception_entry_irq:
     /*
-     * CRITICAL: Adjust return address FIRST
-     * ARM IRQ LR points to PC+4, but we want to return to interrupted instruction
-     * Per ARM Architecture Reference Manual: IRQ return needs LR-4
+     * CRITICAL: Adjust return address FIRST (PC+4 -> PC)
      */
     sub     lr, lr, #4
     
     /*
-     * Save context on IRQ mode stack
-     * CRITICAL ORDER (matches struct exception_context in exception.h):
-     * 1. Save r0-r12, LR FIRST (preserves original r0!)
-     * 2. Save SPSR after
+     * 1. Save Return State (LR_irq, SPSR_irq) to SVC Stack
+     * This moves context safety to the Thread's Kernel Stack immediately.
+     * Mode 0x13 = SVC.
+     */
+    srsdb   sp!, #0x13
+    
+    /*
+     * 2. Switch to SVC Mode
+     * We serve the IRQ in Supervisor Mode (standard for simple OS)
+     */
+    cps     #0x13
+    
+    /*
+     * 3. Save General Purpose Registers + LR_svc
+     * We push LR_svc to maintain 8-byte alignment (14 regs total).
+     * Note: LR_svc is likely scratch if we came from User Mode, 
+     * but we save it to allow kernel preemption later if needed.
      */
     stmfd   sp!, {r0-r12, lr}
     
-    /* Save SPSR after general registers
-     * ALIGNMENT FIX: Push {SPSR, Padding} to maintain 8-byte stack alignment
-     * Stack was: 14 regs (56 bytes) -> Aligned
-     * We need to push 2 more words (8 bytes) to keep alignment.
-     */
-    mrs     r0, spsr
-    mov     r1, #0              /* Zero padding */
-    stmfd   sp!, {r0, r1}
-    
     /*
-     * Call C dispatcher
-     * r0 = pointer to exception_context (current SP)
-     * SP now points to complete saved context
+     * 4. Call C dispatcher
+     * r0 = pointer to stack (struct exception_context*)
+     * Note: Struct layout mismatch vs Stack:
+     * Stack: [R0..R12, LR_svc, SPSR_irq, LR_irq]
+     * Struct: [SPSR, R0..R12, LR] (Old layout)
+     * irq_dispatch doesn't use ctx, so this is safe for now.
      */
     mov     r0, sp
     bl      irq_dispatch
     
     /*
-     * Restore context
-     * irq_dispatch() has completed (including EOI)
+     * 5. Restore Context
      */
-    
-    /* Restore SPSR and Padding */
-    ldmfd   sp!, {r0, r1}
-    msr     spsr_cxsf, r0
+    ldmfd   sp!, {r0-r12, lr}
     
     /*
-     * Return from IRQ
-     * ldmfd with ^ suffix: restores CPSR from SPSR automatically
-     * This also switches CPU mode back to previous mode (typically SVC)
+     * 6. Return from Exception (RFE)
+     * Loads PC and CPSR from the stack (pushed by srsdb).
+     * Automatically handles mode switch back to User/Previous mode.
+     * "^" suffix not needed (RFE handles SPSR->CPSR).
      */
-    ldmfd   sp!, {r0-r12, pc}^
+    rfefd   sp!
 
 /* ============================================================
  * FIQ Exception Entry (Stub)

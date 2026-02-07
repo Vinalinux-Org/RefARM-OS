@@ -9,6 +9,7 @@
 #define SYS_WRITE   0
 #define SYS_EXIT    1
 #define SYS_YIELD   2
+#define SYS_READ    3
 
 /* ============================================================
  * Error Codes

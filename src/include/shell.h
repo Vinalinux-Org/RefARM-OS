@@ -27,26 +27,28 @@
  * Shell API
  * ============================================================ */
 
-/**
- * Initialize shell
- * 
- * Prints welcome banner and initial prompt.
- * Must be called before shell_process_char().
- */
-void shell_init(void);
+/* ============================================================
+ * User Mode Shell API
+ * ============================================================ */
 
-/**
- * Process single character from user input
- * @param c Character received from UART
- * 
- * Handles:
- * - Printable characters: Add to line buffer and echo
- * - Enter (\r or \n): Execute command
- * - Backspace (0x08 or 0x7F): Delete character
- * - Control characters: Ignore
- * 
- * This function handles echo internally.
- */
-void shell_process_char(char c);
+/* Main Entry Point for Shell Task */
+void shell_task_entry(void);
+
+/* Standard Output Wrapper */
+void printf(const char *fmt, ...);
+
+/* Helper Prototypes */
+void shell_putc(char c);
+void shell_puts(const char *s);
+
+/* ============================================================
+ * Command Structure
+ * ============================================================ */
+struct command {
+    const char *name;
+    int (*handler)(int argc, char **argv);
+    const char *usage;
+    const char *description;
+};
 
 #endif /* SHELL_H */

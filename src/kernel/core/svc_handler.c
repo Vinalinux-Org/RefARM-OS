@@ -3,10 +3,14 @@
  * ------------------------------------------------------------
  * Supervisor Call (SVC) Exception Handler
  * Implements the system call dispatcher
+ * 
+ * FIXED: Phase 4 - Added need_reschedule=true in sys_read
+ *        to prevent busy-wait loop
  * ============================================================ */
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include "assert.h"
 #include "trace.h"
 #include "scheduler.h"
@@ -132,9 +136,79 @@ static int32_t sys_exit(struct svc_context *ctx)
 /* sys_yield() */
 static int32_t sys_yield(struct svc_context *ctx)
 {
+    /* 
+     * CRITICAL FIX: Set need_reschedule flag BEFORE calling scheduler_yield
+     * 
+     * Without this, voluntary yields may be ignored if the flag was already
+     * cleared by a previous context switch. This causes tasks to get stuck
+     * in busy-wait loops instead of properly yielding CPU to other tasks.
+     * 
+     * Example failure scenario without this fix:
+     * 1. Shell calls sys_yield() (need_reschedule=false from previous clear)
+     * 2. sys_yield() calls scheduler_yield()
+     * 3. scheduler_yield() sees need_reschedule=false, returns immediately
+     * 4. Shell stuck in loop, never switches to Idle
+     */
+    extern volatile bool need_reschedule;
+    need_reschedule = true;
+    
     /* Voluntary Yield */
     scheduler_yield();
     return E_OK;
+}
+
+/* sys_read(void *buf, uint32_t len) */
+static int32_t sys_read(struct svc_context *ctx)
+{
+    void *buf = (void *)ctx->r0;
+    uint32_t len = (uint32_t)ctx->r1;
+    
+    /* 1. Validation */
+    int val_result = validate_user_pointer(buf, len);
+    if (val_result != E_OK) {
+        uart_printf("[SYS_READ] Validation FAILED: buf=0x%08x, len=%u, err=%d\n", 
+                    (uint32_t)buf, len, val_result);
+        return E_PTR;
+    }
+    
+    if (len == 0) return 0;
+    
+    /* 2. Logic: Read 1 byte (NON-BLOCKING)
+     * Only supporting len=1 for now (getc style) to keep it simple.
+     * 
+     * CRITICAL DESIGN DECISION:
+     * We implement NON-BLOCKING I/O instead of blocking in kernel.
+     * 
+     * WHY NOT BLOCK IN KERNEL?
+     * Calling scheduler_yield() from within an SVC handler is DANGEROUS:
+     * - We're in exception context with SVC stack frame
+     * - Context switch expects normal task stack frame
+     * - Stack corruption and crashes result
+     * 
+     * PROPER BLOCKING I/O requires:
+     * - Task sleep/wake mechanism
+     * - Wait queues
+     * - IRQ-driven wakeup
+     * 
+     * For this phase, we use NON-BLOCKING I/O:
+     * - Return 0 if no data available
+     * - User code must call sys_yield() and retry
+     */
+    char *c_buf = (char *)buf;
+    int c;
+    
+    c = uart_getc();
+    if (c == -1) {
+        // uart_printf("[SYS_READ] No data, returning 0\n");
+        return 0;  /* No data available - user should yield and retry */
+    }
+    
+    // uart_printf("[SYS_READ] Got char: 0x%02x ('%c')\n", c, (c >= 32 && c <= 126) ? c : '?');
+    
+    /* Store result */
+    *c_buf = (char)c;
+    
+    return 1; /* Read 1 byte */
 }
 
 /* ============================================================
@@ -150,6 +224,16 @@ void svc_handler(struct svc_context *ctx)
      */
     uint32_t syscall_num = ctx->r7;
     int32_t result = E_INVAL;
+    
+    static uint32_t svc_call_count = 0;
+    svc_call_count++;
+    
+    /* DEBUG: Print every 5000 SVC calls */
+    /* DEBUG: Print every 5000 SVC calls */
+    // if (svc_call_count % 5000 == 0) {
+    //     uart_printf("[SVC] Call #%u: syscall=%u (YIELD=%u, READ=%u)\n",
+    //                 svc_call_count, syscall_num, SYS_YIELD, SYS_READ);
+    // }
 
     // TRACE_SCHED("SVC Entry: ID=%d, Args=0x%x, 0x%x", syscall_num, ctx->r0, ctx->r1);
 
@@ -164,6 +248,10 @@ void svc_handler(struct svc_context *ctx)
             
         case SYS_YIELD:
             result = sys_yield(ctx);
+            break;
+
+        case SYS_READ:
+            result = sys_read(ctx);
             break;
             
         default:

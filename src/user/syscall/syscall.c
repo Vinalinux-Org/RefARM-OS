@@ -1,4 +1,4 @@
-#include "user_lib.h"
+#include "user_syscall.h"
 #include "syscalls.h"
 
 /* ============================================================
@@ -73,4 +73,28 @@ void sys_exit(int status)
     
     /* Should never return */
     while(1);
+}
+
+/* ============================================================
+ * sys_read - Read data from UART
+ * ============================================================ */
+int sys_read(void *buf, uint32_t len)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #3\n\t"          /* SYS_READ = 3 */
+        "mov    r0, %1\n\t"          /* arg1 = buf */
+        "mov    r1, %2\n\t"          /* arg2 = len */
+        "mov    r2, #0\n\t"          /* arg3 = 0 */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (buf), "r" (len)       /* Inputs: buf, len */
+        /* Clobbers: r0-r3 are arguments/result, r7 is ID. 
+         * "memory" is crucial because we write to buf */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
 }

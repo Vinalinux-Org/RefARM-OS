@@ -62,8 +62,12 @@ void task_stack_init(struct task_struct *task,
     *--stack_ptr = (uint32_t)entry_point;
     
     /* 1.2. Push R0-R12 (User Registers) */
-    for (int i = 0; i < 13; i++) {
-        *--stack_ptr = 0;
+    /* 
+     * Push in REVERSE order (R12 -> R0) so that R0 is at TOS (Low Address).
+     * LDMIA loads: [SP]->R0, [SP+4]->R1 ...
+     */
+    for (int i = 12; i >= 0; i--) {
+        *--stack_ptr = 0x0BAD0000 | i; /* Pattern: 0BAD0000, 0BAD0001... */
     }
     
     /* 1.3. Push Padding (Alignment) */
@@ -82,23 +86,65 @@ void task_stack_init(struct task_struct *task,
     /* 2.1. Push LR (Return address -> Trampoline) */
     *--stack_ptr = (uint32_t)svc_exit_trampoline;
     
-    /* 2.2. Push R11-R4 (8 registers) */
-    for (int i = 0; i < 8; i++) {
+    /* 2.2. Push R11-R3 (9 registers: R11..R4, R3) */
+    /* We include R3 to make the frame 10 words (40 bytes), keeping SP 8-byte aligned */
+    for (int i = 0; i < 9; i++) {
         *--stack_ptr = 0;  /* Initial value 0 */
     }
     
     /* ============================================================
      * Finalize
      * ============================================================ */
+     
+     /* 
+      * CRITICAL FIX: Reserve space for Kernel Stack (SVC/IRQ)
+      * We must split the stack area because a shared pointer model fails:
+      * - SP_svc is banked and stays at the top (empty).
+      * - SP_usr grows down from the top.
+      * - Exceptions using SP_svc would overwrite SP_usr data.
+      * 
+      * Layout:
+      * [TOP]
+      *   <-- Kernel Stack (Grow Down) -- SP_svc starts here
+      *   ... (Reserved 512 bytes) ...
+      * [BOUNDARY]
+      *   <-- User Stack (Grow Down)   -- SP_usr starts here
+      *   ...
+      * [BOTTOM]
+      */
+     
+    #define KERNEL_STACK_RESERVE 512
+    
+    /* Kernel SP points to where we pushed the context (Frame 2, which is somewhat high up).
+       But wait, the Frame 1 & 2 we just pushed are for BOOTSTRAP.
+       We need to ensure they are placed correctly? 
+       Actually, Start_First_Task pops them.
+       But we need to make sure SP_svc 'resets' to Top after pop?
+       start_first_task logic:
+       LDR SP, [ctx.sp] -> Points to Frame 2.
+       Pop Frame 2 (SP increases).
+       Pop Frame 1 (User Regs).
+       BX LR.
+       SP is now at Top of where Frame 1 was.
+       
+       We want SP_svc to handle exceptions. It should be at (Base + Size).
+       So we should push frames at (Base + Size).
+       
+       And sets SP_usr to (Base + Size - 512).
+    */
+    
     task->context.sp = (uint32_t)stack_ptr;
     
     /* 
-     * CORRECTION: Initialize User Stack Pointer (SP_usr) 
-     * SPSR is set to User Mode. When we return to User Mode, 
-     * SP_usr must point to valid stack. 
-     * We share the same stack area. The User Stack starts where Kernel Stack ends.
+     * Initialize User Stack Pointer (SP_usr) 
+     * Set to (Stack Top - Reserve) to avoid collision with Kernel Stack 
      */
-    task->context.sp_usr = (uint32_t)stack_ptr;
+    task->context.sp_usr = (uint32_t)((char *)stack_base + stack_size - KERNEL_STACK_RESERVE);
+    
+    /* 
+     * Initialize User Link Register (LR_usr).
+     */
+    task->context.lr_usr = (uint32_t)entry_point;
     
     task->stack_base = stack_base;
     task->stack_size = stack_size;
@@ -109,7 +155,13 @@ void task_stack_init(struct task_struct *task,
         PANIC("Stack Setup Overflow");
     }
     
-    uart_printf("  Stack initialized. SP=0x%08x\n", task->context.sp);
+    /* Verify User Stack safety */
+    if (task->context.sp_usr <= (uint32_t)stack_base) {
+        PANIC("User Stack Setup Overflow");
+    }
+
+    uart_printf("  Stack initialized. Kernel SP=0x%08x, User SP=0x%08x\n", 
+                task->context.sp, task->context.sp_usr);
     
     /* CRITICAL DEBUG: Dump stack frame */
     uart_printf("[TASK] Stack Dump:\n");
@@ -117,9 +169,9 @@ void task_stack_init(struct task_struct *task,
     
     /* Frame 2 (Kernel) */
     uart_printf("  [Frame 2 - Kernel]\n");
-    /* Currently SP points to R4 */
-    uart_printf("  R4..R11, LR (Callee Saved):\n");
-    for(int i=0; i<9; i++) uart_printf("    %08x ", *d++);
+    /* Currently SP points to R3 */
+    uart_printf("  R3..R11, LR (Callee Saved + Pad):\n");
+    for(int i=0; i<10; i++) uart_printf("    %08x ", *d++);
     uart_printf("\n");
     
     /* Frame 1 (User) */
@@ -133,4 +185,5 @@ void task_stack_init(struct task_struct *task,
     
     /* Check entry_point val */
     uart_printf("[TASK] Entry Point Addr: 0x%08x\n", (uint32_t)entry_point);
+    uart_printf("[TASK] SP Alignment Check: 0x%08x %% 8 = %d\n", task->context.sp, task->context.sp % 8);
 }

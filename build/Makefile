@@ -19,7 +19,7 @@ C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/in
 
 # Objects
 ASM_OBJ = vectors.o reset.o entry.o exception_entry.o context_switch.o
-C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o user_lib.o
+C_OBJ = main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o syscall.o
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -66,10 +66,15 @@ exception_handlers.o: $(SRC)/kernel/exceptions/exception_handlers.c
 irq_core.o: $(SRC)/kernel/irq/irq_core.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-shell.o: $(SRC)/kernel/shell/shell.c
+
+
+syscall.o: $(SRC)/user/syscall/syscall.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-commands.o: $(SRC)/kernel/shell/commands.c
+shell.o: $(SRC)/user/shell/shell.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+commands.o: $(SRC)/user/shell/commands.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 scheduler.o: $(SRC)/kernel/scheduler/scheduler.c
@@ -98,8 +103,7 @@ intc.o: $(SRC)/drivers/intc.c
 timer.o: $(SRC)/drivers/timer.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-user_lib.o: $(SRC)/user/user_lib.c
-	$(CC) $(CFLAGS) -c $< -o $@
+
 
 # Link
 kernel.elf: $(OBJS)

@@ -32,10 +32,10 @@
  */
 context_switch:
     /* 
-     * 1. Save Callee-Saved Registers + LR
-     * stmfd sp!, {r4-r11, lr}
+     * 1. Save Callee-Saved Registers + R3 Pad + LR
+     * stmfd sp!, {r3-r11, lr}
      */
-    stmfd   sp!, {r4-r11, lr}
+    stmfd   sp!, {r3-r11, lr}
     
     /* 
      * 2. Save Stack Pointer to current task structure
@@ -77,12 +77,22 @@ context_switch:
     cps     #0x13               @ Switch back to SVC Mode
     
     /* 
-     * 5. Restore next task's Registers
+     * 5. Restore next task's Registers (Frame 2: Kernel Context)
      */
-    ldmfd   sp!, {r4-r11, lr}
+    ldmfd   sp!, {r3-r11, lr}
     
     /* 
-     * 6. Return to task (jump to LR)
+     * 6. Return to caller (svc_handler or scheduler)
+     * 
+     * IMPORTANT: Mode switching is NOT done here!
+     * - context_switch is called from SVC mode (inside svc_handler)
+     * - We return to svc_handler via bx lr
+     * - svc_handler returns through svc_exit_trampoline
+     * - svc_exit_trampoline performs the actual mode switch (SVC→USR)
+     * 
+     * Stack at this point contains the SVC exception frame that was
+     * pushed by exception_entry_svc. That frame will be restored when
+     * svc_handler returns.
      */
     bx      lr
     
@@ -111,9 +121,9 @@ start_first_task:
     cps     #0x13               @ Switch back to SVC Mode
     
     /* 
-     * 2. Restore Registers (pop Frame 2: Kernel Context)
+     * 2. Restore Registers (pop Frame 2: Kernel Context + R3 Pad)
      */
-    ldmfd   sp!, {r4-r11, lr}
+    ldmfd   sp!, {r3-r11, lr}
     
     /* 
      * 3. Jump to task (actually jumps to svc_exit_trampoline)
