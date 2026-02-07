@@ -98,3 +98,47 @@ int sys_read(void *buf, uint32_t len)
     
     return ret;
 }
+
+/* ============================================================
+ * sys_get_tasks - Get process list
+ * ============================================================ */
+int sys_get_tasks(void *buf, uint32_t max_count)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #4\n\t"          /* SYS_GET_TASKS = 4 */
+        "mov    r0, %1\n\t"          /* arg1 = buf */
+        "mov    r1, %2\n\t"          /* arg2 = max_count */
+        "mov    r2, #0\n\t"          /* arg3 = 0 */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (buf), "r" (max_count) /* Inputs */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
+}
+
+/* ============================================================
+ * sys_get_meminfo - Get memory info
+ * ============================================================ */
+int sys_get_meminfo(void *buf)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #5\n\t"          /* SYS_GET_MEMINFO = 5 */
+        "mov    r0, %1\n\t"          /* arg1 = buf */
+        "mov    r1, #0\n\t"          /* arg2 = 0 */
+        "mov    r2, #0\n\t"          /* arg3 = 0 */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (buf)                  /* Inputs */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
+}

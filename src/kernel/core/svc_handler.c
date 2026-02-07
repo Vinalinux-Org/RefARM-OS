@@ -211,6 +211,54 @@ static int32_t sys_read(struct svc_context *ctx)
     return 1; /* Read 1 byte */
 }
 
+/* sys_get_tasks(process_info_t *buf, uint32_t max_count) */
+static int32_t sys_get_tasks(struct svc_context *ctx)
+{
+    void *buf = (void *)ctx->r0;
+    uint32_t max_count = (uint32_t)ctx->r1;
+    
+    // Validate buffer (size = max_count * sizeof(process_info_t))
+    uint32_t size = max_count * sizeof(process_info_t);
+    if (validate_user_pointer(buf, size) != E_OK) {
+        return E_PTR;
+    }
+    
+    return scheduler_get_tasks(buf, max_count);
+}
+
+/* sys_get_meminfo(mem_info_t *buf) */
+extern uint8_t _data_start[];
+extern uint8_t _data_end[];
+extern uint8_t _bss_start[];
+extern uint8_t _bss_end[];
+extern uint8_t _stack_start[];
+extern uint8_t _svc_stack_top[];
+extern uint8_t _kernel_end[];
+
+static int32_t sys_get_meminfo(struct svc_context *ctx)
+{
+    mem_info_t *buf = (mem_info_t *)ctx->r0;
+    
+    if (validate_user_pointer(buf, sizeof(mem_info_t)) != E_OK) {
+        return E_PTR;
+    }
+    
+    buf->total = 128 * 1024 * 1024; /* 128 MB */
+    
+    /* Calculate sizes */
+    buf->kernel_text = (uint32_t)_text_end - (uint32_t)_text_start;
+    buf->kernel_data = (uint32_t)_data_end - (uint32_t)_data_start;
+    buf->kernel_bss  = (uint32_t)_bss_end - (uint32_t)_bss_start;
+    buf->kernel_stack= (uint32_t)_svc_stack_top - (uint32_t)_stack_start;
+    
+    /* Free memory = Total - (Kernel End - 0x80000000) */
+    /* Note: This assumes simple linear allocation */
+    uint32_t kernel_end = (uint32_t)_kernel_end;
+    buf->free = buf->total - (kernel_end - 0x80000000);
+    
+    return E_OK;
+}
+
 /* ============================================================
  * SVC Handler (Dispatcher)
  * ============================================================ */
@@ -228,7 +276,6 @@ void svc_handler(struct svc_context *ctx)
     static uint32_t svc_call_count = 0;
     svc_call_count++;
     
-    /* DEBUG: Print every 5000 SVC calls */
     /* DEBUG: Print every 5000 SVC calls */
     // if (svc_call_count % 5000 == 0) {
     //     uart_printf("[SVC] Call #%u: syscall=%u (YIELD=%u, READ=%u)\n",
@@ -252,6 +299,14 @@ void svc_handler(struct svc_context *ctx)
 
         case SYS_READ:
             result = sys_read(ctx);
+            break;
+            
+        case SYS_GET_TASKS:
+            result = sys_get_tasks(ctx);
+            break;
+            
+        case SYS_GET_MEMINFO:
+            result = sys_get_meminfo(ctx);
             break;
             
         default:

@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include "trace.h"
 #include "assert.h"
+#include "syscalls.h" /* For process_info_t */
 
 /* ============================================================
  * External Assembly Functions
@@ -390,4 +391,41 @@ void debug_check_sp(uint32_t sp_val) {
 struct task_struct *scheduler_current_task(void)
 {
     return current_task;
+}
+
+/**
+ * Get list of tasks
+ * 
+ * @param buf User buffer (array of process_info_t)
+ * @param max_count Max number of entries
+ * @return Number of tasks filled
+ */
+int scheduler_get_tasks(void *buf, uint32_t max_count)
+{
+    process_info_t *info = (process_info_t *)buf;
+    uint32_t count = 0;
+    
+    /* TODO: Verify buffer pointer is in user range? */
+    
+    for (int i = 0; i < MAX_TASKS && count < max_count; i++) {
+        struct task_struct *t = tasks[i];
+        if (t != NULL) {
+            info[count].id = t->id;
+            
+            /* Copy name manually (no strcpy) */
+            const char *src = t->name ? t->name : "unknown";
+            int copy_len = 0;
+            while(src[copy_len] && copy_len < 31) {
+                info[count].name[copy_len] = src[copy_len];
+                copy_len++;
+            }
+            info[count].name[copy_len] = '\0';
+            
+            info[count].state = t->state;
+            
+            count++;
+        }
+    }
+    
+    return count;
 }

@@ -10,6 +10,27 @@
 #define SYS_EXIT    1
 #define SYS_YIELD   2
 #define SYS_READ    3
+#define SYS_GET_TASKS   4
+#define SYS_GET_MEMINFO 5
+
+/* ============================================================
+ * Data Structures
+ * ============================================================ */
+
+typedef struct {
+    uint32_t id;
+    char name[32];
+    uint32_t state;
+} process_info_t;
+
+typedef struct {
+    uint32_t total;       // Total RAM (e.g. 128MB)
+    uint32_t free;        // Approximate free heap
+    uint32_t kernel_text;
+    uint32_t kernel_data;
+    uint32_t kernel_bss;
+    uint32_t kernel_stack;
+} mem_info_t;
 
 /* ============================================================
  * Error Codes

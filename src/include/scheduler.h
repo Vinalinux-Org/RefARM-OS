@@ -69,6 +69,12 @@ void scheduler_tick(void);
  * Called by tasks when they detect need_reschedule flag.
  * Performs actual context switch in SVC mode (safe).
  */
+/**
+ * Get list of tasks
+ * @return 0 on success, -1 on failure
+ */
+int scheduler_get_tasks(void *buf, uint32_t max_count);
+
 void scheduler_yield(void);
 
 /**

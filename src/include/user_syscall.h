@@ -36,4 +36,20 @@ void sys_exit(int status);
  */
 int sys_read(void *buf, uint32_t len);
 
+
+/* 
+ * Get list of tasks
+ * buf: Pointer to array of process_info_t
+ * max_count: Max tasks to retrieve
+ * Returns: Number of tasks filled, or error
+ */
+int sys_get_tasks(void *buf, uint32_t max_count);
+
+/* 
+ * Get memory information
+ * buf: Pointer to mem_info_t
+ * Returns: 0 on success, or error
+ */
+int sys_get_meminfo(void *buf);
+
 #endif /* _USER_SYSCALL_H */
