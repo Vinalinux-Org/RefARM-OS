@@ -1,5 +1,0 @@
-console=ttyO0,115200n8
-loadaddr=0x80000000
-bootfile=kernel.bin
-loadkernel=fatload mmc 0:1 ${loadaddr} ${bootfile}
-uenvcmd=echo Booting RefARM-OS...; run loadkernel; go ${loadaddr}
