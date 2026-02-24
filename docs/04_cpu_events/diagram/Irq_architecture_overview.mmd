@@ -1,0 +1,73 @@
+graph TB
+    %% --- CONFIGURATION ---
+    Note["📝 NOTE:<br/>This diagram illustrates the<br/>Runtime Interrupt Handling Sequence<br/>on AM335x (Cortex-A8)."]
+
+    %% --- NODES DEFINITION ---
+    subgraph HW["HARDWARE DOMAIN"]
+        direction TB
+        Periph{{"Peripheral Device<br/>(Timer/UART/GPIO)"}}
+        INTC["AM335x INTC<br/>(Interrupt Controller)"]
+        CPU["ARM Core<br/>(Cortex-A8)"]
+    end
+    
+    subgraph ARCH["ARCHITECTURE LAYER"]
+        Vector["Vector Table<br/>(VBAR + 0x18)"]
+        Entry["exception_entry_irq<br/>(Assembly Stub)"]
+    end
+    
+    subgraph KERNEL["KERNEL LAYER"]
+        Dispatch["IRQ Dispatch Core<br/>(irq_dispatch)"]
+        INTCDrv["INTC Driver<br/>(HW Abstraction)"]
+        RegTable[("Handler Table<br/>irq_table_128")] 
+    end
+    
+    subgraph DRIVER["DRIVER LAYER"]
+        ISR["Driver ISR<br/>(Specific Handler)"]
+    end
+    
+    %% --- FLOW CONNECTIONS ---
+    
+    %% 1-3: Hardware Trigger
+    Periph -->|"1. Assert IRQ Line"| INTC
+    INTC -->|"2. IRQ Signal"| CPU
+    CPU -->|"3. Auto-Branch<br/>(Switch Mode: IRQ)"| Vector
+    
+    %% 4-5: Context Save
+    Vector -->|"4. Jump"| Entry
+    Entry -->|"5. Save Context<br/>Call Dispatch"| Dispatch
+    
+    %% 6-7: Identification
+    Dispatch -->|"6. Read Active IRQ"| INTCDrv
+    INTCDrv -.->|"Return: IRQ_ID"| Dispatch
+    
+    %% 7-8: Lookup
+    Dispatch -->|"7. Lookup Handler"| RegTable
+    RegTable -.->|"Func Pointer"| Dispatch
+    
+    %% 8-9: Execution - FIXED SYNTAX HERE
+    Dispatch ==>|"8. Execute ISR"| ISR
+    ISR -->|"9. Ack/Clear Peripheral"| Periph
+    ISR -.->|"Return"| Dispatch
+    
+    %% 10-11: EOI
+    Dispatch -->|"10. Mask/Unmask"| INTCDrv
+    INTCDrv --"11. Write EOI Reg"--> INTC
+    
+    %% 12-13: Restore
+    Dispatch -.->|"12. Return"| Entry
+    Entry -.->|"13. Restore Context (SPSR)<br/>Return to Prev Mode"| CPU
+    
+    %% --- STYLING ---
+    classDef hw fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
+    classDef arch fill:#b3e5fc,stroke:#0277bd,stroke-width:2px,color:#000
+    classDef kernel fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
+    classDef driver fill:#e1bee7,stroke:#7b1fa2,stroke-width:2px,color:#000
+    classDef data fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5
+    classDef note fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
+    
+    class Periph,INTC,CPU hw
+    class Vector,Entry arch
+    class Dispatch,INTCDrv kernel
+    class RegTable data
+    class ISR driver
+    class Note note

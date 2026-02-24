@@ -1,0 +1,47 @@
+graph TB
+    subgraph "User Space"
+        Shell["Shell Task<br/>USR Mode"]
+        ShellRead["shell_read_line"]
+        ShellParse["shell_parse_args"]
+        ShellExec["shell_execute_command"]
+        
+        Shell --> ShellRead
+        ShellRead --> ShellParse
+        ShellParse --> ShellExec
+    end
+    
+    subgraph "Syscall Interface"
+        SysRead["SYS_READ<br/>ID: 3"]
+        SysWrite["SYS_WRITE<br/>ID: 0"]
+        SysGetTasks["SYS_GET_TASKS<br/>ID: 4"]
+        SysYield["SYS_YIELD<br/>ID: 2"]
+        SysGetMem["SYS_GET_MEMINFO<br/>ID: 5"]
+    end
+    
+    subgraph "Kernel Space - SVC Mode"
+        SVCHandler["svc_handler"]
+        UARTDriver["UART Driver<br/>(Interrupt-Driven)<br/>Ring Buffer + IRQ"]
+        Scheduler["Scheduler<br/>get_tasks_info"]
+    end
+    
+    ShellRead -->|"sys_read(buf, len)"| SysRead
+    ShellExec -->|"sys_write(msg)"| SysWrite
+    ShellExec -->|"sys_get_tasks(buf)"| SysGetTasks
+    ShellExec -->|"sys_get_meminfo(buf)"| SysGetMem
+    ShellRead -->|"sys_yield()"| SysYield
+    
+    SysRead -->|"SVC #0"| SVCHandler
+    SysWrite -->|"SVC #0"| SVCHandler
+    SysGetTasks -->|"SVC #0"| SVCHandler
+    SysYield -->|"SVC #0"| SVCHandler
+    SysGetMem -->|"SVC #0"| SVCHandler
+    
+    SVCHandler -->|"R7=3"| UARTDriver
+    SVCHandler -->|"R7=0"| UARTDriver
+    SVCHandler -->|"R7=4"| Scheduler
+    SVCHandler -->|"R7=2"| Scheduler
+    SVCHandler -->|"R7=5"| Scheduler
+    
+    style Shell fill:#e1f5ff
+    style SVCHandler fill:#ffe1e1
+    style UARTDriver fill:#fff4e1

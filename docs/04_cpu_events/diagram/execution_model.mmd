@@ -1,0 +1,62 @@
+stateDiagram
+  direction LR
+  classDef boot fill:#fff3cd,stroke:#856404,stroke-width:2px;
+  classDef run fill:#d1e7dd,stroke:#198754,stroke-width:2px;
+  classDef vector fill:#f0f4ff,stroke:#4c6ef5,stroke-width:2px;
+  classDef handle fill:#e7f5ff,stroke:#0d6efd,stroke-width:2px;
+  classDef fatal fill:#f8d7da,stroke:#dc3545,stroke-width:2px;
+  state Boot {
+    direction TB
+    [*] --> Entry
+    Entry --> Early
+    Early --> Init
+[*]    Entry
+    Early
+    Init
+  }
+  state SteadyState {
+    direction TB
+    [*] --> Loop
+[*]    Loop
+  }
+  state Vector {
+    direction TB
+    Dispatch
+  }
+  state Handling {
+    direction TB
+    state Sync {
+      direction TB
+      Exception
+    }
+    state Async {
+      direction TB
+      Interrupt
+    }
+  }
+  Boot --> SteadyState:Boot Complete
+  SteadyState --> Vector:Trap / IRQ
+  Vector --> Exception:Vector entry
+  Vector --> Interrupt:Vector entry
+  Exception --> SteadyState:Return (MOVS PC, LR)
+  Interrupt --> SteadyState:Return (SUBS PC, LR, #4)
+  Exception --> Halt:Fatal Error
+  Boot:1. BOOT SEQUENCE
+  Entry:<b>_start</b><br>(Entry Point)
+  Early:<b>Early Phase</b><br>(Minimal Env)
+  Init:<b>Init Phase</b><br>(Setup VBAR)
+  SteadyState:2. STEADY STATE
+  Loop:<b>Kernel Main Loop</b><br/>(Shell Event Loop)
+  Vector:3. VECTOR TABLE
+  Dispatch:<b>Vector Dispatch</b><br>(VBAR + offset)
+  Handling:4. EVENT HANDLING (Privileged)
+  Sync:Synchronous
+  Exception:<b>EXCEPTION</b><br>(Undef, SVC, Abort)
+  Async:Asynchronous
+  Interrupt:<b>INTERRUPT</b><br>(IRQ, FIQ)
+  Halt:System Halt
+  class Boot boot
+  class SteadyState run
+  class Vector vector
+  class Handling handle
+  class Halt fatal

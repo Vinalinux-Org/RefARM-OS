@@ -1,10 +1,17 @@
-# Build outputs
-build/*.o
-build/*.elf
-build/*.bin
-build/*.map
-build/*.lst
-build/uImage
+# Build Directories
+/build/
+/bootloader/build/
+/kernel/build/
+
+# Build Artifacts (Global)
+*.o
+*.elf
+*.bin
+*.map
+*.lst
+*.dis
+uImage
+MLO
 
 # Temp files
 *.swp
@@ -27,9 +34,21 @@ build/uImage
 Thumbs.db
 *.bak
 
-# Logs
+# Logs and Dumps
 *.log
+*_dump.txt
+*_nm.txt
 
 # Temporary directories
 /tmp/
 temp/
+
+# AI and Agent Configs
+.agent/
+.clinerules
+docs_trainingAI/
+AGENT_RULES.md
+rule.md
+
+# Documentation
+tech_docs/

@@ -1,121 +1,192 @@
 # PROJECT_SCOPE
 
-## 1. Mục tiêu dự án
+RefARM Reference Platform
+Version 1.0
 
-Dự án này nhằm xây dựng một Operating System (OS) reference tối giản trên kiến trúc ARM, chạy trực tiếp trên board thật (BeagleBone Black – AM335x, Cortex-A8).
+## 1. Tổng quan dự án
 
-OS này không nhằm mục đích sử dụng thương mại, không tối ưu hiệu năng, không cạnh tranh với Linux hay RTOS hiện có.
+Dự án này nhằm xây dựng một Reference ARM Software Platform hoàn chỉnh chạy trực tiếp trên phần cứng thật, bao gồm:
+- **Boot & Bring-up Layer**
+- **Board Support Package (BSP)**
+- **Minimal Reference Operating System**
+- **Development SDK** (Toolchain + Runtime Template + Build Infrastructure)
+- **Validation & Measurement Framework**
 
-Mục tiêu chính của dự án là:
-- Làm rõ tư duy và quy trình thiết kế một OS từ góc nhìn kỹ sư hệ điều hành.
-- Cung cấp một nền tảng reference để kỹ sư có thể học, phân tích và tự triển khai lại OS từ đầu trên chip ARM.
-- Làm cơ sở kỹ thuật cho các dự án phát triển chip trong tương lai.
+Nền tảng mục tiêu:
+- Board: BeagleBone Black
+- SoC: Texas Instruments AM3358
+- Kiến trúc CPU: ARMv7-A (Cortex-A8)
 
-Sản phẩm bàn giao bao gồm code và tài liệu kỹ thuật chi tiết, trong đó tài liệu đóng vai trò ngang bằng với code.
+Board này được xem như một SoC mới hoàn toàn, không sử dụng Linux BSP hoặc SDK thương mại có sẵn.
+Dự án không nhằm mục tiêu thương mại, không thay thế Linux hoặc RTOS hiện có.
 
----
+Mục tiêu của dự án là tạo một reference platform phục vụ:
+- Phân tích kiến trúc SoC.
+- Hiểu rõ tương tác OS–Hardware.
+- Làm nền tảng kỹ thuật cho phát triển chip ARM trong tương lai.
 
-## 2. Đối tượng sử dụng
+## 2. Mục tiêu kỹ thuật
 
-Đối tượng đọc và sử dụng chính của dự án là:
-- Kỹ sư viết hệ điều hành (OS engineer).
-- Kỹ sư làm việc trực tiếp với chip, SoC, hoặc BSP ở mức thấp.
+Dự án phải đạt được các mục tiêu sau:
+- Làm rõ toàn bộ chuỗi thực thi từ BootROM handoff đến kernel hoạt động.
+- Xây dựng một OS reference tối giản nhưng đúng kiến trúc ARMv7-A.
+- Cung cấp SDK cho phép kỹ sư khác phát triển và build ứng dụng cho nền tảng.
+- Cung cấp công cụ đo lường để validate hành vi phần cứng.
+- Tài liệu hóa toàn bộ hệ thống đủ để tái triển khai độc lập.
 
-Dự án không hướng tới người mới học lập trình và không đơn giản hóa thuật ngữ kỹ thuật.
+## 3. Kiến trúc hệ thống
 
----
+Hệ thống được phân thành 4 tầng logic:
+```text
+Silicon / SoC
+   ↓
+Boot & Bring-up
+   ↓
+Reference OS Kernel
+   ↓
+User Application (via SDK)
+```
 
-## 3. Phạm vi kỹ thuật
+## 4. Phạm vi kỹ thuật
 
-### 3.1. Phần cứng và kiến trúc
-- Kiến trúc CPU: ARMv7-A.
-- Core: Cortex-A8.
-- Board mục tiêu: BeagleBone Black (AM335x).
-- Chạy trực tiếp trên board thật, không ưu tiên giả lập.
+### 4.1. Boot & Bring-up Layer
+**Mục tiêu:** kiểm soát CPU ngay sau reset vector.
+**Bao gồm:**
+- `start.S` (reset entry)
+- Vector table setup
+- CPU mode initialization
+- Stack initialization cho các mode
+- UART early console
+- Timer initialization
+- Interrupt controller configuration
 
-### 3.2. Mô hình hệ điều hành
-- OS kernel dạng monolithic, tối giản.
-- Single-core, không hỗ trợ multi-core hoặc multi-chip.
-- Kiến trúc được thiết kế rõ ràng, có thể mở rộng nhưng không triển khai vượt phạm vi reference.
+**Tiêu chí hoàn thành:**
+- Board boot thành công từ reset vector.
+- In được log sớm qua UART.
+- Có khả năng xử lý interrupt cơ bản.
 
-### 3.3. Không gian thực thi
-- Kernel chạy ở privileged mode.
-- Có phân biệt kernel mode và user mode ở mức cơ bản.
-- Không triển khai cơ chế bảo mật hoặc isolation phức tạp như OS thương mại.
+### 4.2. Board Support Package (BSP)
+BSP trong dự án này bao gồm:
+- Định nghĩa register và memory map dựa trên TRM.
+- Driver tối thiểu cho:
+  - UART
+  - Timer
+  - Interrupt controller
+- Linker script ánh xạ chính xác SRAM/DDR.
+- Runtime startup (`crt0`).
 
----
+*Lưu ý:* Không sử dụng high-level SDK từ Linux. Việc định nghĩa register phải dựa trực tiếp vào tài liệu kỹ thuật SoC (TRM).
 
-## 4. Phạm vi chức năng
+### 4.3. Reference Operating System
+Kernel dạng monolithic tối giản.
 
-OS reference được coi là hoàn thành khi đạt được các mốc sau:
+**4.3.1. Execution Model**
+- Single-core.
+- Kernel mode (privileged).
+- User mode cơ bản.
+- Phân tách kernel/user ở mức MMU mapping đơn giản.
 
-- Boot thành công từ reset vector trên board thật.
-- Thiết lập trạng thái CPU ban đầu (mode, stack, vector table).
-- Khởi tạo UART và xuất log sớm để debug.
-- Thiết lập timer và xử lý interrupt cơ bản.
-- Thiết lập MMU với mapping tĩnh, đơn giản.
-- Triển khai cơ chế xử lý exception và IRQ.
-- Có scheduler đơn giản (ví dụ round-robin).
-- Thực hiện context switch giữa nhiều task.
+**4.3.2. Thành phần bắt buộc**
+- Exception handling (Undefined, Prefetch Abort, Data Abort, IRQ, SVC).
+- MMU enable với static mapping.
+- Kernel/User memory split cơ bản.
+- PCB (Process Control Block).
+- Scheduler (round-robin).
+- Context switch (save/restore register).
+- System call interface thông qua SVC.
+- Tập syscall tối thiểu: `write`, `exit`, `yield`.
 
-Ngoài các chức năng kernel cốt lõi, OS có các thành phần mức cao tối giản:
+**4.3.3. Thành phần minh họa kiến trúc**
+- Shell dòng lệnh tối giản qua UART.
+- File abstraction mức tối thiểu (in-memory hoặc block đơn giản).
+- Không hướng tới POSIX compatibility.
 
-- Cơ chế system call cơ bản để chuyển từ user mode sang kernel mode.
-- Một tập system call tối thiểu (ví dụ: read, write, open, close, exit).
-- Shell dòng lệnh đơn giản chạy trên UART.
-- Hệ thống file ở mức đơn giản (có thể là in-memory hoặc block-based tối giản).
+### 4.4. Development SDK
+**Mục tiêu:** Cho phép kỹ sư phát triển và build chương trình cho nền tảng.
 
-Các thành phần này chỉ nhằm minh họa kiến trúc OS, không nhằm đạt tính đầy đủ hay tương thích POSIX.
+**4.4.1. Toolchain**
+- Cross-compiler cho ARMv7-A.
+- Dựa trên GCC / binutils / newlib.
+- Được build hoặc đóng gói riêng cho dự án. Có sysroot riêng.
+- *Không phát triển compiler mới.*
 
----
+**4.4.2. Runtime Template**
+- `crt0`/startup template cho user application.
+- Linker script mẫu.
+- Syscall header.
+- Register header tự định nghĩa.
 
-## 5. Những gì không nằm trong phạm vi
+**4.4.3. Build & Flash Infrastructure**
+- Makefile/CMake chuẩn.
+- Script build image.
+- Script format và copy SD card.
+- Script flash tiện dụng.
 
-Dự án này không triển khai các nội dung sau:
+**4.4.4. Example Programs**
+- Hello world.
+- Multitask demo.
+- Syscall demo.
 
-- POSIX compatibility đầy đủ.
+**Yêu cầu SDK:** Một kỹ sư khác có thể: `Clone → build → flash → run`.
+
+### 4.5. Validation & Measurement
+**Mục tiêu:** Dùng OS làm công cụ kiểm chứng SoC.
+**Bao gồm:**
+- Interrupt latency measurement.
+- Context switch timing.
+- Syscall overhead measurement.
+- Timer accuracy verification.
+- Basic MMU behavior test.
+
+*Kết quả phải được ghi lại trong tài liệu kỹ thuật.*
+
+## 5. Ngoài phạm vi bao gồm
+
+Dự án không bao gồm:
+- POSIX đầy đủ.
 - Networking stack.
-- Filesystem phức tạp hoặc journaling.
-- Dynamic linking hoặc user program phức tạp.
-- SMP hoặc multi-core.
+- Full filesystem.
+- SMP / multi-core.
 - Power management nâng cao.
-- Security model phức tạp.
+- Security framework phức tạp.
+- Phát triển compiler mới.
+- Thiết kế ISA mới.
 
-Các nội dung trên có thể được đề cập ở mức khái niệm trong tài liệu, nhưng không được hiện thực hóa trong code.
+## 6. Nguyên tắc thiết kế
 
----
-
-## 6. Nguyên tắc phát triển
-
-- Code được viết để minh họa tư duy và kiến trúc, không nhằm tối ưu hiệu năng.
-- Mỗi module và mỗi file tồn tại phải có lý do kỹ thuật rõ ràng.
-- Không trừu tượng hóa sớm khi chưa cần thiết.
-- Ưu tiên tính rõ ràng, khả năng trace và khả năng giải thích.
-- System call, shell và filesystem được triển khai ở mức tối thiểu cần thiết để thể hiện kiến trúc.
-- Mọi phần code quan trọng phải có tài liệu kỹ thuật đi kèm.
-
----
+- Mỗi module phải có mục đích rõ ràng.
+- Không thêm abstraction không cần thiết.
+- Ưu tiên tính minh bạch và khả năng trace.
+- Code phải phản ánh kiến trúc.
+- Mọi subsystem phải có tài liệu kèm theo.
 
 ## 7. Vai trò của tài liệu
 
-Tài liệu là một phần không tách rời của sản phẩm.
-
-Mỗi subsystem trong OS phải có:
-- Mô tả kiến trúc.
-- Luồng xử lý.
+Tài liệu là thành phần bắt buộc của sản phẩm. Mỗi subsystem phải có:
+- Kiến trúc tổng quan.
+- Flow xử lý.
 - Diagram minh họa.
-- Giải thích quyết định thiết kế chính.
+- Memory layout.
+- Giải thích quyết định thiết kế.
 
-Một kỹ sư khác, chỉ dựa trên tài liệu và source code, phải có khả năng hiểu và tự triển khai lại OS này từ đầu.
+Một kỹ sư khác phải có khả năng tái triển khai hệ thống dựa trên tài liệu và source code.
+
+## 8. Tiêu chí hoàn thành
+
+Dự án được coi là hoàn thành khi:
+- Boot thành công trên board thật.
+- Kernel xử lý interrupt ổn định.
+- Có ít nhất hai user task chạy preemptive.
+- MMU hoạt động theo mapping thiết kế.
+- SDK build được user application.
+- Có tài liệu kỹ thuật đầy đủ.
+- Có kết quả measurement xác thực.
 
 ---
+**KẾT LUẬN**
 
-## 8. Tiêu chí đánh giá thành công
+Dự án này là một:
+> **ARM Reference Software Platform**
+> Bao gồm Boot + BSP + Minimal OS + SDK + Validation.
 
-Dự án được coi là thành công khi:
-
-- OS boot và chạy ổn định trên board thật.
-- Các cơ chế cốt lõi của OS (boot, exception, scheduler, MMU, syscall) được thể hiện rõ ràng.
-- Có shell và filesystem tối giản để tương tác và kiểm chứng OS.
-- Code và tài liệu đủ rõ để một kỹ sư OS khác có thể học và tái tạo lại.
-- Dự án giữ được phạm vi gọn, không phát triển lan man ngoài mục tiêu ban đầu.
+Không phải research compiler. Không phải commercial OS. Không phải Linux replacement.

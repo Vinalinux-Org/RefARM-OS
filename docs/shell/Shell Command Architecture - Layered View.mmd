@@ -1,0 +1,138 @@
+graph TB
+    subgraph "Layer 4: User Interface"
+        Terminal["Serial Terminal<br/>(PuTTY/minicom)"]
+        Input["User Input:<br/>ps (Enter)"]
+        Output["Display:<br/>ID NAME STATE<br/>0 idle READY<br/>1 Shell RUNNING"]
+    end
+    
+    subgraph "Layer 3: Shell Task (User Mode - 0x10)"
+        direction TB
+        ShellMain["shell_entry()<br/>Main loop"]
+        ReadLine["shell_read_line()<br/>Buffer input"]
+        Parse["shell_parse_args()<br/>Tokenize"]
+        Dispatch["shell_execute_command()<br/>Route to handler"]
+        
+        subgraph "Command Handlers"
+            direction LR
+            CmdHelp["cmd_help()"]
+            CmdPs["cmd_ps()"]
+            CmdClear["cmd_clear()"]
+            CmdEcho["cmd_echo()"]
+            CmdMem["cmd_mem()"]
+            CmdInfo["cmd_info()"]
+        end
+        
+        ShellMain --> ReadLine
+        ReadLine --> Parse
+        Parse --> Dispatch
+        Dispatch --> CmdHelp
+        Dispatch --> CmdPs
+        Dispatch --> CmdClear
+        Dispatch --> CmdEcho
+        Dispatch --> CmdMem
+        Dispatch --> CmdInfo
+    end
+    
+    subgraph "Layer 2: System Call Interface"
+        direction TB
+        
+        subgraph "User-Space Wrappers (user_lib.c)"
+            SysRead["sys_read(buf, len)<br/>__attribute__((naked))"]
+            SysWrite["sys_write(buf, len)<br/>__attribute__((naked))"]
+            SysGetTasks["sys_get_tasks(buf, max)<br/>__attribute__((naked))"]
+            SysYield["sys_yield()<br/>__attribute__((naked))"]
+            SysGetMem["sys_get_meminfo(buf)<br/>__attribute__((naked))"]
+        end
+        
+        SVC["SVC #0 Gate<br/>USR to SVC Mode Switch"]
+        
+        subgraph "Kernel Handlers (svc_handler.c)"
+            SVCDispatch["svc_handler(ctx)<br/>switch(ctx->r7)"]
+            KernRead["sys_read_handler()<br/>Case 3"]
+            KernWrite["sys_write_handler()<br/>Case 0"]
+            KernGetTasks["sys_get_tasks_handler()<br/>Case 4"]
+            KernYield["sys_yield_handler()<br/>Case 2"]
+            KernGetMem["sys_get_meminfo_handler()<br/>Case 5"]
+        end
+        
+        SysRead -->|R7=3| SVC
+        SysWrite -->|R7=0| SVC
+        SysGetTasks -->|R7=4| SVC
+        SysYield -->|R7=2| SVC
+        SysGetMem -->|R7=5| SVC
+        
+        SVC --> SVCDispatch
+        SVCDispatch --> KernRead
+        SVCDispatch --> KernWrite
+        SVCDispatch --> KernGetTasks
+        SVCDispatch --> KernYield
+        SVCDispatch --> KernGetMem
+    end
+    
+    subgraph "Layer 1: Kernel Services (Supervisor Mode - 0x13)"
+        direction TB
+        
+        subgraph "Subsystems"
+            Scheduler["Scheduler<br/>scheduler.c"]
+            Memory["Memory Manager<br/>(Planned)"]
+            Validation["Pointer Validator<br/>validate_user_pointer()"]
+        end
+        
+        subgraph "Drivers"
+            UART["UART Driver<br/>uart.c"]
+            Timer["Timer Driver<br/>timer.c"]
+            INTC["Interrupt Controller<br/>intc.c"]
+        end
+        
+        KernWrite --> Validation
+        KernRead --> Validation
+        KernGetTasks --> Validation
+        KernGetMem --> Validation
+        
+        Validation --> UART
+        Validation --> Scheduler
+        Validation --> Memory
+        
+        KernYield --> Scheduler
+        Scheduler --> Timer
+        Timer --> INTC
+        UART --> INTC
+    end
+    
+    subgraph "Layer 0: Hardware (AM335x SoC)"
+        direction LR
+        
+        HW_UART["UART0<br/>0x44E09000<br/>TX/RX Registers"]
+        HW_TIMER["DMTimer2<br/>0x48040000<br/>TCRR/TLDR"]
+        HW_INTC["INTC<br/>0x48200000<br/>IRQ Routing"]
+        HW_RAM["DDR3 RAM<br/>0x80000000<br/>128MB"]
+        
+        UART --> HW_UART
+        Timer --> HW_TIMER
+        INTC --> HW_INTC
+        Scheduler --> HW_RAM
+        Memory --> HW_RAM
+    end
+    
+    Terminal --> Input
+    Input --> ShellMain
+    CmdPs --> SysGetTasks
+    CmdHelp --> SysWrite
+    CmdEcho --> SysWrite
+    CmdClear --> SysWrite
+    CmdMem --> SysGetMem
+    CmdInfo --> SysWrite
+    ReadLine --> SysRead
+    ReadLine --> SysYield
+    
+    HW_UART --> Output
+    Output --> Terminal
+    
+    style Terminal fill:#e3f2fd
+    style ShellMain fill:#fff3e0
+    style SVC fill:#ffebee,stroke:#c62828,stroke-width:3px
+    style Scheduler fill:#e8f5e9
+    style HW_UART fill:#fce4ec
+    style HW_TIMER fill:#fce4ec
+    style HW_INTC fill:#fce4ec
+    style HW_RAM fill:#fce4ec
