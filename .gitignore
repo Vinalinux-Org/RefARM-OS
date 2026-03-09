@@ -43,12 +43,7 @@ Thumbs.db
 /tmp/
 temp/
 
-# AI and Agent Configs
-.agent/
-.clinerules
-docs_trainingAI/
-AGENT_RULES.md
-rule.md
 
 # Documentation
 tech_docs/
+docs/

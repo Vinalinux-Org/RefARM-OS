@@ -7,7 +7,6 @@
 
 #include "idle.h"
 #include "task.h"
-#include "uart.h"
 #include "user_syscall.h"
 #include <stdbool.h>
 
@@ -27,12 +26,7 @@ static struct task_struct idle_task_struct;
 static void idle_task(void)
 {
     uint32_t counter = 0;
-    
-    uart_printf("[IDLE] Idle task started\n");
-    uart_printf("[IDLE] Stack: 0x%08x - 0x%08x\n",
-                (uint32_t)&idle_stack[0],
-                (uint32_t)&idle_stack[IDLE_STACK_SIZE]);
-    
+
     /* Main idle loop */
     while (1) {
         counter++;

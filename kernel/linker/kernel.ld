@@ -85,6 +85,22 @@ SECTIONS
     } > DDR
 
     /* --------------------------------------------------------
+     * L1 Page Table (Page Global Directory)
+     * --------------------------------------------------------
+     * 4096 entries × 4 bytes = 16KB
+     * Must be 16KB aligned (ARM ARM B4.1.154 — TTBR0).
+     * Zero-init by BSS clear → all entries default to FAULT.
+     */
+    .pgd (NOLOAD) :
+    {
+        . = ALIGN(16384);
+        _pgd_start = .;
+        *(.pgd)
+        . = ALIGN(16384);
+        _pgd_end = .;
+    } > DDR
+
+    /* --------------------------------------------------------
      * User Stacks (Isolated Region)
      * --------------------------------------------------------
      * Grouping all user stacks here allows simple pointer validation:

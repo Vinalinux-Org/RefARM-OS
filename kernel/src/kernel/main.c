@@ -13,6 +13,7 @@
 #include "intc.h"
 #include "shell.h"
 #include "task.h"
+#include "mmu.h"
 #include <stdbool.h>
 
 /* ============================================================
@@ -30,17 +31,20 @@ void kernel_main(void)
     /* 1. Hardware Init */
     watchdog_disable();
     uart_init();
-    
+
     uart_printf("\n\n");
     uart_printf("========================================\n");
     uart_printf(" RefARM-OS: Interactive Shell\n");
     uart_printf("========================================\n\n");
 
+    /* 1.5 MMU — Identity mapping + enable caches */
+    mmu_init();
+
     intc_init();
     irq_init();
-    uart_enable_rx_interrupt();  /* Enable UART RX interrupt for keyboard input */
+    uart_enable_rx_interrupt(); /* Enable UART RX interrupt for keyboard input */
     timer_init();
-    
+
     /* 2. Schedule Initialization */
     scheduler_init();
 
@@ -52,11 +56,12 @@ void kernel_main(void)
     shell_task.name = "Shell";
     shell_task.state = TASK_STATE_READY;
     shell_task.id = 0; // Will be assigned 1
-    
+
     /* shells_task_entry defined in shell.h */
     task_stack_init(&shell_task, shell_task_entry, shell_stack, SHELL_STACK_SIZE);
-    
-    if (scheduler_add_task(&shell_task) < 0) {
+
+    if (scheduler_add_task(&shell_task) < 0)
+    {
         uart_printf("[BOOT] Failed to add Shell Task\n");
     }
 
@@ -64,7 +69,8 @@ void kernel_main(void)
     scheduler_start();
 
     /* Should never reach here */
-    while (1) {
+    while (1)
+    {
         uart_printf("PANIC: Scheduler returned!\n");
     }
 }

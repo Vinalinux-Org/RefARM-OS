@@ -278,6 +278,7 @@ void scheduler_yield(void)
     
     /* Find next ready task (simple round-robin) */
     next_index = current_task_index;
+    next_task = prev_task;
     uint32_t search_count = 0;
     
     // uart_printf("[SCHED] Finding next task...\n");
@@ -298,13 +299,27 @@ void scheduler_yield(void)
         if (tasks[next_index] != NULL && 
             tasks[next_index]->state == TASK_STATE_READY) {
             // uart_printf("[SCHED]   → Selected task %u\n", next_index);
+            next_task = tasks[next_index];
             break;
         }
     }
-    
-    next_task = tasks[next_index];
-    
+
     /* Sanity check + fallback */
+    if (next_task == prev_task) {
+        if (prev_task->state == TASK_STATE_ZOMBIE) {
+            if (tasks[0] != NULL && tasks[0]->state != TASK_STATE_ZOMBIE) {
+                uart_printf("[SCHED] Warning: No READY task found, forcing idle task READY to prevent deadlock\n");
+                tasks[0]->state = TASK_STATE_READY;
+                next_task = tasks[0];
+                next_index = 0;
+            } else {
+                PANIC("Scheduler Deadlock - No runnable tasks!");
+            }
+        } else {
+            return;
+        }
+    }
+
     if (next_task->state != TASK_STATE_READY) {
         uart_printf("[SCHED] ERROR: Task %u not READY (state=%u)\n",
                     next_task->id, next_task->state);
