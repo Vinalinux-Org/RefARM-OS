@@ -1,10 +1,15 @@
 /* ============================================================
  * mmu_enable.S
  * ------------------------------------------------------------
- * MMU enable sequence — identity mapping (VA == PA)
+ * MMU enable sequence
+ *
+ * Placed in .text.mmu_trampoline so VMA == LMA == PA.
+ * Called from entry.S (also at PA) before the jump to high VA.
+ * After this function returns, both identity map (PA→PA) and
+ * high map (PA→VA 0xC0xxxxxx) are active.
  * ============================================================ */
 
-    .section .text, "ax"
+    .section .text.mmu_trampoline, "ax"
     .align 4
     .global mmu_enable
 
@@ -56,7 +61,8 @@ mmu_enable:
     orr     r1, r1, #(1 << 12)         /* I — I-Cache */
     mcr     p15, 0, r1, c1, c0, 0      /* Write SCTLR */
 
-    /* Pipeline sync — subsequent fetches go through MMU */
+    /* Pipeline sync — next fetch goes through MMU.
+     * Identity map (PA→PA) keeps this code reachable. */
     isb
 
     bx      lr

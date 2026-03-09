@@ -20,7 +20,7 @@ C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/in
 
 # Objects (Flattened in BUILD_DIR)
 ASM_OBJ = $(addprefix $(BUILD_DIR)/, vectors.o reset.o entry.o exception_entry.o context_switch.o mmu_enable.o)
-C_OBJ = $(addprefix $(BUILD_DIR)/, main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o syscall.o mmu.o)
+C_OBJ = $(addprefix $(BUILD_DIR)/, main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o syscall.o mmu.o mmu_test.o)
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -78,6 +78,9 @@ $(BUILD_DIR)/shell.o: $(SRC)/user/shell/shell.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/commands.o: $(SRC)/user/shell/commands.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/mmu_test.o: $(SRC)/user/mmu_test/mmu_test.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/scheduler.o: $(SRC)/kernel/scheduler/scheduler.c | $(BUILD_DIR)

@@ -24,6 +24,14 @@ static uint8_t shell_stack[SHELL_STACK_SIZE] __attribute__((aligned(4096), secti
 static struct task_struct shell_task;
 
 /* ============================================================
+ * MMU Test Task (User Mode)
+ * ============================================================ */
+extern void mmu_test_task_entry(void);
+#define MMU_TEST_STACK_SIZE 4096
+static uint8_t mmu_test_stack[MMU_TEST_STACK_SIZE] __attribute__((aligned(4096), section(".user_stack")));
+static struct task_struct mmu_test_task;
+
+/* ============================================================
  * Kernel Main
  * ============================================================ */
 void kernel_main(void)
@@ -37,7 +45,9 @@ void kernel_main(void)
     uart_printf(" RefARM-OS: Interactive Shell\n");
     uart_printf("========================================\n\n");
 
-    /* 1.5 MMU — Identity mapping + enable caches */
+    /* 1.5 MMU Phase B — remove identity map, update VBAR to high VA.
+     * MMU was already enabled by entry.S (Phase A trampoline).
+     * We are now running at VA 0xC0xxxxxx. */
     mmu_init();
 
     intc_init();
@@ -63,6 +73,18 @@ void kernel_main(void)
     if (scheduler_add_task(&shell_task) < 0)
     {
         uart_printf("[BOOT] Failed to add Shell Task\n");
+    }
+
+    /* 5. Add MMU Test Task (User Mode) — validates memory protection */
+    mmu_test_task.name = "MMU_Test";
+    mmu_test_task.state = TASK_STATE_READY;
+    mmu_test_task.id = 0;
+
+    task_stack_init(&mmu_test_task, mmu_test_task_entry, mmu_test_stack, MMU_TEST_STACK_SIZE);
+
+    if (scheduler_add_task(&mmu_test_task) < 0)
+    {
+        uart_printf("[BOOT] Failed to add MMU Test Task\n");
     }
 
     uart_printf("[BOOT] Starting Scheduler...\n");

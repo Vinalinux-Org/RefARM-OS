@@ -1,7 +1,17 @@
 /* ============================================================
  * mmu.h
  * ------------------------------------------------------------
- * MMU definitions and interface
+ * MMU definitions and interface — 3G/1G Virtual Memory Split
+ *
+ * Virtual Address Layout:
+ *   User  Space: 0x00000000 – 0xBFFFFFFF (3GB)
+ *   Kernel Space: 0xC0000000 – 0xFFFFFFFF (1GB)
+ *
+ * Physical DDR: 0x80000000 (128MB)
+ *   → Mapped to VA 0xC0000000 (Kernel)
+ *
+ * Peripherals: identity mapped (PA == VA, below 0xC0000000)
+ *   but access restricted to Kernel only (AP=01).
  * ============================================================ */
 
 #ifndef MMU_H
@@ -86,23 +96,53 @@
 #define MMU_SECTION_SHIFT 20
 
 /* ============================================================
- * Memory Map — AM335x Physical Regions
+ * 3G/1G Virtual Memory Layout
  * ============================================================ */
 
-/* L4_WKUP: UART0 (0x44E09000), CM_PER (0x44E00000) */
-#define PERIPH_L4_WKUP_BASE 0x44E00000
+/* Kernel virtual address base (1GB kernel window) */
+#define KERNEL_VA_BASE 0xC0000000
+
+/* Physical DDR base (AM335x) */
+#define DDR_PA_BASE 0x80000000
+#define DDR_SIZE_MB 128
+
+/* PA ↔ VA conversion offset */
+#define VA_OFFSET (KERNEL_VA_BASE - DDR_PA_BASE) /* 0x40000000 */
+
+/* Convert between physical and virtual addresses (kernel space) */
+#define PA_TO_VA(pa) ((pa) + VA_OFFSET)
+#define VA_TO_PA(va) ((va) - VA_OFFSET)
+
+/* Kernel DDR: entire 128MB mapped at VA 0xC0000000 */
+#define KERNEL_DDR_VA KERNEL_VA_BASE
+#define KERNEL_DDR_PA DDR_PA_BASE
+#define KERNEL_DDR_MB DDR_SIZE_MB
+
+/* ============================================================
+ * Peripheral Physical Addresses (identity mapped)
+ * ============================================================
+ * Peripherals are mapped PA == VA (below 0xC0000000) with
+ * AP=Kernel-only. This avoids remapping every driver base
+ * address while still protecting User mode from accessing I/O.
+ */
+
+/* L4_WKUP: UART0 (0x44E09000), CM_PER (0x44E00000), WDT1 (0x44E35000) */
+#define PERIPH_L4_WKUP_PA 0x44E00000
 #define PERIPH_L4_WKUP_SECTIONS 1
 
 /* L4_PER: INTC (0x48200000), DMTIMER2 (0x48040000) */
-#define PERIPH_L4_PER_BASE 0x48000000
+#define PERIPH_L4_PER_PA 0x48000000
 #define PERIPH_L4_PER_SECTIONS 3
 
-/* DDR: 128MB starting at 0x80000000 */
-#define DDR_BASE 0x80000000
-#define DDR_SIZE_MB 128
-#define USER_BOOTSTRAP_MB 1
-#define KERNEL_SIZE_MB 8
-#define USER_SIZE_MB (DDR_SIZE_MB - KERNEL_SIZE_MB)
+/* ============================================================
+ * Boot-time Temporary Identity Mapping
+ * ============================================================
+ * During the MMU trampoline, we need both identity (PA==VA)
+ * and high (PA→VA 0xC0xxxxxx) mappings for the DDR range.
+ * After jumping to high VA, the identity map is removed.
+ */
+#define BOOT_IDENTITY_PA DDR_PA_BASE
+#define BOOT_IDENTITY_MB DDR_SIZE_MB /* 128MB temporary */
 
 /* ============================================================
  * Public API
@@ -110,7 +150,11 @@
 
 /**
  * Build L1 page table and enable MMU + caches.
+ * Includes the trampoline: identity map → enable MMU →
+ * jump to high VA → remove identity map.
+ *
  * Must be called after uart_init(), before intc_init().
+ * After this function returns, the kernel runs at VA 0xC0xxxxxx.
  */
 void mmu_init(void);
 

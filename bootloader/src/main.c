@@ -1,6 +1,7 @@
 /* main.c - Refined Boot Flow */
 #include "am335x.h"
 #include "boot.h"
+#include <stdbool.h>
 
 /* Boot parameters structure to pass to kernel */
 struct boot_params {
@@ -194,15 +195,26 @@ void bootloader_main(void)
     uart_puts("========================================\r\n");
     uart_puts("Boot:   Jumping to kernel @ 0x80000000\r\n");
     
-    /* Verify kernel magic (0x00000ED3) */
+    /* Verify kernel image header (first instruction)
+     *
+     * Legacy kernel layout started with a reset branch instruction.
+     * Newer kernels start with an ARM vector table using:
+     *   LDR pc, [pc, #imm]  (0xE59FFxxx)
+     *
+     * This check is only a sanity filter to catch empty/garbage loads.
+     */
     uint32_t *magic = (uint32_t *)0x80000000;
-    if (*magic != 0xEA000006) {
+    uint32_t first = *magic;
+    bool ok_branch = ((first & 0xFF000000) == 0xEA000000);
+    bool ok_ldr_vec = ((first & 0xFFFFF000) == 0xE59FF000);
+    bool ok = (ok_branch || ok_ldr_vec) && first != 0x00000000 && first != 0xFFFFFFFF;
+    if (!ok) {
         uart_puts("KERNEL MAGIC FAIL: ");
-        uart_print_hex(*magic);
+        uart_print_hex(first);
         panic(" - Invalid kernel image!");
     }
     uart_puts("Kernel: Magic = ");
-    uart_print_hex(*magic);
+    uart_print_hex(first);
     uart_puts(" OK\r\n");
 
     uart_puts("========================================\r\n");
