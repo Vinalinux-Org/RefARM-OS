@@ -105,10 +105,20 @@ exception_entry_svc:
     mov     r1, #0              /* Zero padding */
     stmfd   sp!, {r0, r1}       /* SP -= 8. [SP]=SPSR, [SP+4]=Pad */
     
-    /* 3. Prepare C Handler Arguments */
+    /* 3. Re-enable IRQ during syscall processing.
+     * ARM hardware sets I-bit=1 on SVC entry, disabling IRQ.
+     * We must re-enable here so timer ticks and UART RX interrupts
+     * continue to fire. Without this, context_switch from the SVC
+     * handler bleeds IRQ-disabled state into the next task (idle),
+     * permanently killing all interrupts.
+     * On return, ldmfd {pc}^ atomically restores CPSR from SPSR,
+     * so the caller's original IRQ state is safely recovered. */
+    cpsie   i
+    
+    /* 4. Prepare C Handler Arguments */
     mov     r0, sp              /* r0 = struct pt_regs *regs */
     
-    /* 4. Call C Handler */
+    /* 5. Call C Handler */
     bl      svc_handler         /* src/kernel/core/svc_handler.c */
     
     /* 5. Restore SPSR */

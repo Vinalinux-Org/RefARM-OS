@@ -59,7 +59,10 @@ void task_stack_init(struct task_struct *task,
      * svc_exit_trampoline will pop this to return to User Mode.
      * ============================================================ */
     
-    /* 1.1. Push LR (User Entry Point) */
+    /* Determine Mode based on Entry Point (Kernel vs User) */
+    uint32_t spsr_mode = (uint32_t)entry_point >= 0xC0000000 ? 0x13 : 0x10;
+
+    /* 1.1. Push LR (Entry Point) */
     *--stack_ptr = (uint32_t)entry_point;
     
     /* 1.2. Push R0-R12 (User Registers) */
@@ -74,8 +77,8 @@ void task_stack_init(struct task_struct *task,
     /* 1.3. Push Padding (Alignment) */
     *--stack_ptr = 0;
     
-    /* 1.4. Push SPSR (USR Mode = 0x10) */
-    *--stack_ptr = 0x10; 
+    /* 1.4. Push SPSR (0x13=SVC for Kernel task, 0x10=USR for User Task) */
+    *--stack_ptr = spsr_mode; 
     
     /* ============================================================
      * FRAME 2: KERNEL CONTEXT (Low Address)
@@ -177,7 +180,7 @@ void task_stack_init(struct task_struct *task,
     
     /* Frame 1 (User) */
     uart_printf("  [Frame 1 - User]\n");
-    uart_printf("  SPSR: 0x%08x (Expected 0x10)\n", *d++);
+    uart_printf("  SPSR: 0x%08x\n", *d++);
     uart_printf("  PAD:  0x%08x\n", *d++);
     uart_printf("  R12..R0 (User):\n");
     for(int i=0; i<13; i++) uart_printf("    %08x ", *d++);

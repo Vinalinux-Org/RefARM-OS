@@ -102,6 +102,9 @@
 /* Kernel virtual address base (1GB kernel window) */
 #define KERNEL_VA_BASE 0xC0000000
 
+/* True User Space virtual address base */
+#define USER_VA_BASE 0x40000000
+
 /* Physical DDR base (AM335x) */
 #define DDR_PA_BASE 0x80000000
 #define DDR_SIZE_MB 128
@@ -113,10 +116,16 @@
 #define PA_TO_VA(pa) ((pa) + VA_OFFSET)
 #define VA_TO_PA(va) ((va) - VA_OFFSET)
 
-/* Kernel DDR: entire 128MB mapped at VA 0xC0000000 */
+/* Kernel DDR: The first 5MB is for Kernel */
 #define KERNEL_DDR_VA KERNEL_VA_BASE
 #define KERNEL_DDR_PA DDR_PA_BASE
-#define KERNEL_DDR_MB DDR_SIZE_MB
+#define KERNEL_DDR_MB 5
+
+/* User App DDR: Starts after Kernel (Memory pool)
+ * PA 0x80500000 -> VA 0x40000000 (1MB for User App) */
+#define USER_SPACE_PA (DDR_PA_BASE + (KERNEL_DDR_MB * MMU_SECTION_SIZE))
+#define USER_SPACE_VA USER_VA_BASE
+#define USER_SPACE_MB 1
 
 /* ============================================================
  * Peripheral Physical Addresses (identity mapped)

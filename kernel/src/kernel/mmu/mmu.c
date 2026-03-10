@@ -78,13 +78,11 @@ void mmu_init(void)
         "isb\n\t" ::"r"(vbar_va) : "memory");
 
     /* ── Log final memory map ─────────────────────────────── */
-    uart_printf("[MMU] 3G/1G Virtual Memory Split\n");
-    uart_printf("[MMU] User Bootstrap: VA 0x%x -> PA 0x%x (1 MB) [Cached, User RW]\n",
-                KERNEL_DDR_VA, KERNEL_DDR_PA);
-    uart_printf("[MMU] Kernel DDR:     VA 0x%x -> PA 0x%x (%d MB) [Cached, Kernel-only]\n",
-                KERNEL_DDR_VA + MMU_SECTION_SIZE,
-                KERNEL_DDR_PA + MMU_SECTION_SIZE,
-                KERNEL_DDR_MB - 1);
+    uart_printf("[MMU] True 3G/1G Virtual Memory Split\n");
+    uart_printf("[MMU] User Space:  VA 0x%x -> PA 0x%x (%d MB) [Cached, User RW]\n",
+                USER_SPACE_VA, USER_SPACE_PA, USER_SPACE_MB);
+    uart_printf("[MMU] Kernel DDR:  VA 0x%x -> PA 0x%x (%d MB) [Cached, Kernel-only]\n",
+                KERNEL_DDR_VA, KERNEL_DDR_PA, KERNEL_DDR_MB);
     uart_printf("[MMU] Peripheral L4_WKUP: PA 0x%x (%d MB) [Strongly Ordered, Identity]\n",
                 PERIPH_L4_WKUP_PA, PERIPH_L4_WKUP_SECTIONS);
     uart_printf("[MMU] Peripheral L4_PER:  PA 0x%x (%d MB) [Strongly Ordered, Identity]\n",
@@ -109,13 +107,10 @@ void mmu_init(void)
  *   PA 0x44E00000 → VA 0x44E00000 (1MB, peripheral)     [permanent]
  *   PA 0x48000000 → VA 0x48000000 (3MB, peripheral)     [permanent]
  *
- * USER_BOOTSTRAP_MB:
- *   The first 1MB of kernel image contains user task code
- *   (.text entry points for shell/mmu_test) and user stacks
- *   (.user_stack). These must be accessible from User Mode.
- *   With 1MB granularity we cannot separate kernel .text from
- *   user .text within the same MB, so we grant full access to
- *   this first section. The remaining 127MB are kernel-only.
+ *
+ * TRUE 3G/1G SPLIT:
+ *   Kernel no longer shares 0xC0000000 with User tasks.
+ *   User tasks receive their own dedicated mapping at 0x40000000.
  */
 void __attribute__((section(".text.boot_entry")))
 mmu_build_page_table_boot(uint32_t *pgd_pa)
@@ -145,12 +140,16 @@ mmu_build_page_table_boot(uint32_t *pgd_pa)
         pgd_pa[pa >> MMU_SECTION_SHIFT] = pa | MMU_SECT_PERIPHERAL;
     }
 
-    /* ── User bootstrap: first 1MB at VA 0xC0000000 (User RW) ── */
-    va_idx = KERNEL_DDR_VA >> MMU_SECTION_SHIFT;
-    pgd_pa[va_idx] = KERNEL_DDR_PA | MMU_SECT_USER_RAM;
+    /* ── True User Space: VA 0x40000000 (User RW) ── */
+    for (i = 0; i < USER_SPACE_MB; i++)
+    {
+        pa = USER_SPACE_PA + (i * MMU_SECTION_SIZE);
+        va_idx = (USER_SPACE_VA + (i * MMU_SECTION_SIZE)) >> MMU_SECTION_SHIFT;
+        pgd_pa[va_idx] = pa | MMU_SECT_USER_RAM;
+    }
 
-    /* ── Kernel DDR: remaining 127MB at VA 0xC0100000 (Kernel-only) ── */
-    for (i = 1; i < KERNEL_DDR_MB; i++)
+    /* ── Kernel DDR: VA 0xC0000000 (Kernel-only) ── */
+    for (i = 0; i < KERNEL_DDR_MB; i++)
     {
         pa = KERNEL_DDR_PA + (i * MMU_SECTION_SIZE);
         va_idx = (KERNEL_DDR_VA + (i * MMU_SECTION_SIZE)) >> MMU_SECTION_SHIFT;

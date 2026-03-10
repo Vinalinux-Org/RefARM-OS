@@ -228,9 +228,9 @@ static int line_buffer_backspace(void) {
 }
 
 /* ============================================================
- * Shell Task Entry
+ * Shell Main Entry
  * ============================================================ */
-void shell_task_entry(void)
+int main(void)
 {
     char c;
     
@@ -286,4 +286,6 @@ void shell_task_entry(void)
             sys_yield();
         }
     }
+    
+    return 0;
 }

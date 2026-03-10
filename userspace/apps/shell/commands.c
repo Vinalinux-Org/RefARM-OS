@@ -40,6 +40,7 @@ static int cmd_help(int argc, char **argv)
 
 static int cmd_info(int argc, char **argv)
 {
+    (void)argc; (void)argv;
     printf("\nRefARM-OS Info:\n");
     printf("  OS Name  : RefARM-OS v0.1\n");
     printf("  Platform : BeagleBone Black (Cortex-A8)\n");
@@ -61,6 +62,7 @@ static int cmd_echo(int argc, char **argv)
 
 static int cmd_clear(int argc, char **argv)
 {
+    (void)argc; (void)argv;
     /* ANSI Escape Sequence for Clear Screen */
     printf("\033[2J\033[H");
     return 0;
@@ -68,6 +70,7 @@ static int cmd_clear(int argc, char **argv)
 
 static int cmd_ps(int argc, char **argv)
 {
+    (void)argc; (void)argv;
     process_info_t tasks[16];
     int count = sys_get_tasks(tasks, 16);
     
@@ -97,6 +100,7 @@ static int cmd_ps(int argc, char **argv)
 
 static int cmd_mem(int argc, char **argv)
 {
+    (void)argc; (void)argv;
     mem_info_t info;
     if (sys_get_meminfo(&info) != 0) {
         printf("Error getting mem info\n");

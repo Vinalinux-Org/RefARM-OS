@@ -9,18 +9,20 @@ OBJCOPY = $(CROSS_COMPILE)objcopy
 # Directories
 SRC = src
 LINKER = linker
+# Directory containing the userspace payload (shell)
+USERSPACE_DIR = ../userspace
 BUILD_DIR = build
 
 # Source files
 ASM_BOOT_SRC = $(SRC)/arch/arm/entry/reset.S $(SRC)/arch/arm/entry/entry.S
 ASM_EXC_SRC = $(SRC)/arch/arm/exceptions/vectors.S $(SRC)/arch/arm/exceptions/exception_entry.S
 C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.c $(SRC)/kernel/irq/irq_core.c \
-               $(SRC)/kernel/shell/shell.c $(SRC)/kernel/shell/commands.c $(SRC)/kernel/core/svc_handler.c
+               $(SRC)/kernel/core/svc_handler.c
 C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/intc.c $(SRC)/drivers/timer.c
 
 # Objects (Flattened in BUILD_DIR)
 ASM_OBJ = $(addprefix $(BUILD_DIR)/, vectors.o reset.o entry.o exception_entry.o context_switch.o mmu_enable.o)
-C_OBJ = $(addprefix $(BUILD_DIR)/, main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o shell.o commands.o scheduler.o task.o idle.o svc_handler.o syscall.o mmu.o mmu_test.o)
+C_OBJ = $(addprefix $(BUILD_DIR)/, main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o scheduler.o task.o idle.o svc_handler.o mmu.o payload.o)
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -32,6 +34,7 @@ CFLAGS = -Wall -nostdlib -nostartfiles -ffreestanding \
          -fno-stack-protector \
          -Iinclude \
          -I$(SRC)/arch/arm/include \
+         -I$(USERSPACE_DIR)/include \
          -O2 -g
 ASFLAGS = -march=armv7-a -mfloat-abi=soft
 LDFLAGS = -T $(LINKER)/kernel.ld -nostdlib -Wl,-Map=$(BUILD_DIR)/kernel.map
@@ -42,6 +45,16 @@ all: $(BUILD_DIR)/kernel.bin
 # Create build directory
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
+
+# Userspace Dependencies - Build shell
+PAYLOAD_BIN = $(USERSPACE_DIR)/build/apps/shell/shell.bin
+$(PAYLOAD_BIN):
+	$(MAKE) -C $(USERSPACE_DIR)
+
+# Payload Embed Target
+$(BUILD_DIR)/payload.o: $(SRC)/kernel/payload.S $(PAYLOAD_BIN) | $(BUILD_DIR)
+	$(CC) $(ASFLAGS) -c $< -o $@
+
 
 # Assembly files - Boot
 $(BUILD_DIR)/reset.o: $(SRC)/arch/arm/entry/reset.S | $(BUILD_DIR)
@@ -71,17 +84,6 @@ $(BUILD_DIR)/exception_handlers.o: $(SRC)/kernel/exceptions/exception_handlers.c
 $(BUILD_DIR)/irq_core.o: $(SRC)/kernel/irq/irq_core.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/syscall.o: $(SRC)/user/syscall/syscall.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/shell.o: $(SRC)/user/shell/shell.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/commands.o: $(SRC)/user/shell/commands.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/mmu_test.o: $(SRC)/user/mmu_test/mmu_test.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/scheduler.o: $(SRC)/kernel/scheduler/scheduler.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -131,6 +133,9 @@ $(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel.elf
 	@ls -lh $@
 
 clean:
-	rm -rf $(BUILD_DIR) *.o *.elf *.bin *.map uImage
+	@echo "  CLEAN   kernel headers, objects and elf"
+	@rm -rf $(BUILD_DIR) *.o *.elf *.bin *.map uImage
+	@echo "  CLEAN   userspace payload"
+	@$(MAKE) -C $(USERSPACE_DIR) clean
 
 .PHONY: all clean
