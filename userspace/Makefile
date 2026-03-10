@@ -2,26 +2,39 @@
 # RefARM-OS Userspace Master Makefile
 # ==============================================================================
 
+MAKEFLAGS += --no-print-directory
+
 # Default app to build if not specified (e.g., make APP=hello_world)
 APP ?= shell
 
 .PHONY: all lib app clean help
 
-all: lib app
+all:
+	@if $(MAKE) -q -C lib && $(MAKE) -q -C apps/$(APP) APP=$(APP); then \
+		echo "make: Nothing to be done for 'all'."; \
+	else \
+		$(MAKE) build_lib build_app; \
+	fi
 
-# 1. Build the userspace static library (librefarm.a and crt0.o)
-lib:
-	@echo "========================================"
-	@echo " Building Userspace Library (librefarm) "
-	@echo "========================================"
-	@$(MAKE) -C lib
+build_lib:
+	@if ! $(MAKE) -q -C lib; then \
+		echo "========================================"; \
+		echo " Building Userspace Library (librefarm) "; \
+		echo "========================================"; \
+		$(MAKE) -C lib; \
+	fi
 
-# 2. Build the specific application
-app: lib
-	@echo "========================================"
-	@echo " Building Application: $(APP)           "
-	@echo "========================================"
-	@$(MAKE) -C apps/$(APP) APP=$(APP)
+build_app: build_lib
+	@if ! $(MAKE) -q -C apps/$(APP) APP=$(APP); then \
+		echo "========================================"; \
+		echo " Building Application: $(APP)           "; \
+		echo "========================================"; \
+		$(MAKE) -C apps/$(APP) APP=$(APP); \
+	fi
+
+lib: build_lib
+app: build_app
+
 
 clean:
 	@echo "========================================"
