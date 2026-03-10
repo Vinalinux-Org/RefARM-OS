@@ -102,7 +102,7 @@ SECTIONS
     /* ========================================================
      * Initialized data
      * ======================================================== */
-    .data ALIGN(ADDR(.text) + SIZEOF(.text), 4) : AT(LOADADDR(.text) + SIZEOF(.text))
+    .data ALIGN(ADDR(.text) + SIZEOF(.text), 4) : AT(ALIGN(LOADADDR(.text) + SIZEOF(.text), 4))
     {
         _data_start = .;
         *(.data*)

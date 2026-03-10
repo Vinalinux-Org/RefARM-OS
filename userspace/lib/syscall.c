@@ -139,3 +139,95 @@ int sys_get_meminfo(void *buf)
     
     return ret;
 }
+
+/* ============================================================
+ * Filesystem syscalls
+ * ============================================================ */
+
+/* ============================================================
+ * sys_open - Open a file
+ * ============================================================ */
+int sys_open(const char *path, int flags)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #6\n\t"          /* SYS_OPEN = 6 */
+        "mov    r0, %1\n\t"          /* arg1 = path */
+        "mov    r1, %2\n\t"          /* arg2 = flags */
+        "mov    r2, #0\n\t"          /* arg3 = 0 */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (path), "r" (flags)    /* Inputs */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
+}
+
+/* ============================================================
+ * sys_read_file - Read from file descriptor
+ * ============================================================ */
+int sys_read_file(int fd, void *buf, uint32_t len)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #7\n\t"          /* SYS_READ_FILE = 7 */
+        "mov    r0, %1\n\t"          /* arg1 = fd */
+        "mov    r1, %2\n\t"          /* arg2 = buf */
+        "mov    r2, %3\n\t"          /* arg3 = len */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (fd), "r" (buf), "r" (len) /* Inputs */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
+}
+
+/* ============================================================
+ * sys_close - Close file descriptor
+ * ============================================================ */
+int sys_close(int fd)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #8\n\t"          /* SYS_CLOSE = 8 */
+        "mov    r0, %1\n\t"          /* arg1 = fd */
+        "mov    r1, #0\n\t"          /* arg2 = 0 */
+        "mov    r2, #0\n\t"          /* arg3 = 0 */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (fd)                   /* Inputs */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
+}
+
+/* ============================================================
+ * sys_listdir - List directory contents
+ * ============================================================ */
+int sys_listdir(const char *path, void *entries, uint32_t max_entries)
+{
+    int ret;
+    
+    __asm__ __volatile__ (
+        "mov    r7, #9\n\t"          /* SYS_LISTDIR = 9 */
+        "mov    r0, %1\n\t"          /* arg1 = path */
+        "mov    r1, %2\n\t"          /* arg2 = entries */
+        "mov    r2, %3\n\t"          /* arg3 = max_entries */
+        "svc    #0\n\t"              /* Trigger SVC */
+        "mov    %0, r0\n\t"          /* Save return value */
+        : "=r" (ret)                 /* Output: ret */
+        : "r" (path), "r" (entries), "r" (max_entries) /* Inputs */
+        : "r0", "r1", "r2", "r7", "memory"
+    );
+    
+    return ret;
+}

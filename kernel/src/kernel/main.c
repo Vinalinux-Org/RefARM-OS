@@ -13,6 +13,9 @@
 #include "intc.h"
 #include "mmu.h"
 #include "cpu.h"
+#include "vfs.h"
+#include "ramfs.h"
+#include "syscalls.h"
 #include <stdbool.h>
 /* ============================================================
  * User Space Payload (Defined in payload.S)
@@ -54,7 +57,23 @@ void kernel_main(void)
     uart_enable_rx_interrupt(); /* Enable UART RX interrupt for keyboard input */
     timer_init();
 
-    /* 1.6 Load User Payload to 0x40000000 */
+    /* 1.6 Initialize VFS and mount RAMFS */
+    uart_printf("[BOOT] Initializing Virtual File System...\n");
+    vfs_init();
+    
+    /* Initialize RAMFS */
+    if (ramfs_init() != E_OK) {
+        uart_printf("[BOOT] ERROR: Failed to initialize RAMFS\n");
+        while (1);
+    }
+    
+    /* Mount RAMFS at root */
+    if (vfs_mount("/", ramfs_get_operations()) != E_OK) {
+        uart_printf("[BOOT] ERROR: Failed to mount RAMFS at /\n");
+        while (1);
+    }
+
+    /* 1.7 Load User Payload to 0x40000000 */
     uint32_t payload_size = (uint32_t)&_shell_payload_end - (uint32_t)&_shell_payload_start;
     uart_printf("[BOOT] Loading User App Payload to 0x%x (Size: %d bytes)\n", USER_SPACE_VA, payload_size);
 

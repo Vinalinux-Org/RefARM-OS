@@ -14,6 +14,7 @@
 #include "uart.h"
 #include "syscalls.h"
 #include "mmu.h"
+#include "vfs.h"
 
 /*
  * SVC Context Structure (AAPCS Aligned)
@@ -260,6 +261,68 @@ static int32_t sys_get_meminfo(struct svc_context *ctx)
     return E_OK;
 }
 
+/* sys_open(const char *path, int flags) */
+static int32_t sys_open(struct svc_context *ctx)
+{
+    const char *path = (const char *)ctx->r0;
+    int flags = (int)ctx->r1;
+    
+    /* Validate path pointer (estimate max path length) */
+    if (validate_user_pointer(path, MAX_PATH) != E_OK) {
+        return E_PTR;
+    }
+    
+    /* Call VFS layer */
+    return vfs_open(path, flags);
+}
+
+/* sys_read_file(int fd, void *buf, uint32_t len) */
+static int32_t sys_read_file(struct svc_context *ctx)
+{
+    int fd = (int)ctx->r0;
+    void *buf = (void *)ctx->r1;
+    uint32_t len = (uint32_t)ctx->r2;
+    
+    /* CRITICAL: Validate buffer + length range as requested */
+    if (validate_user_pointer(buf, len) != E_OK) {
+        return E_PTR;
+    }
+    
+    /* Call VFS layer */
+    return vfs_read(fd, buf, len);
+}
+
+/* sys_close(int fd) */
+static int32_t sys_close(struct svc_context *ctx)
+{
+    int fd = (int)ctx->r0;
+    
+    /* Call VFS layer */
+    return vfs_close(fd);
+}
+
+/* sys_listdir(const char *path, file_info_t *entries, uint32_t max_entries) */
+static int32_t sys_listdir(struct svc_context *ctx)
+{
+    const char *path = (const char *)ctx->r0;
+    file_info_t *entries = (file_info_t *)ctx->r1;
+    uint32_t max_entries = (uint32_t)ctx->r2;
+    
+    /* Validate path pointer */
+    if (validate_user_pointer(path, MAX_PATH) != E_OK) {
+        return E_PTR;
+    }
+    
+    /* Validate entries buffer */
+    uint32_t entries_size = max_entries * sizeof(file_info_t);
+    if (validate_user_pointer(entries, entries_size) != E_OK) {
+        return E_PTR;
+    }
+    
+    /* Call VFS layer */
+    return vfs_listdir(path, entries, max_entries);
+}
+
 /* ============================================================
  * SVC Handler (Dispatcher)
  * ============================================================ */
@@ -309,6 +372,22 @@ void svc_handler(struct svc_context *ctx)
 
     case SYS_GET_MEMINFO:
         result = sys_get_meminfo(ctx);
+        break;
+
+    case SYS_OPEN:
+        result = sys_open(ctx);
+        break;
+
+    case SYS_READ_FILE:
+        result = sys_read_file(ctx);
+        break;
+
+    case SYS_CLOSE:
+        result = sys_close(ctx);
+        break;
+
+    case SYS_LISTDIR:
+        result = sys_listdir(ctx);
         break;
 
     default:

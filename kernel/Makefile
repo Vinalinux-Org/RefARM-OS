@@ -19,10 +19,11 @@ ASM_EXC_SRC = $(SRC)/arch/arm/exceptions/vectors.S $(SRC)/arch/arm/exceptions/ex
 C_KERNEL_SRC = $(SRC)/kernel/main.c $(SRC)/kernel/exceptions/exception_handlers.c $(SRC)/kernel/irq/irq_core.c \
                $(SRC)/kernel/core/svc_handler.c
 C_DRIVER_SRC = $(SRC)/drivers/uart.c $(SRC)/drivers/watchdog.c $(SRC)/drivers/intc.c $(SRC)/drivers/timer.c
+C_FS_SRC = $(SRC)/kernel/fs/vfs.c $(SRC)/kernel/fs/ramfs.c
 
 # Objects (Flattened in BUILD_DIR)
 ASM_OBJ = $(addprefix $(BUILD_DIR)/, vectors.o reset.o entry.o exception_entry.o context_switch.o mmu_enable.o)
-C_OBJ = $(addprefix $(BUILD_DIR)/, main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o scheduler.o task.o idle.o svc_handler.o mmu.o payload.o)
+C_OBJ = $(addprefix $(BUILD_DIR)/, main.o exception_handlers.o irq_core.o uart.o watchdog.o intc.o timer.o scheduler.o task.o idle.o svc_handler.o mmu.o payload.o vfs.o ramfs.o)
 OBJS = $(ASM_OBJ) $(C_OBJ)
 
 # Flags
@@ -116,6 +117,13 @@ $(BUILD_DIR)/mmu_enable.o: $(SRC)/arch/arm/mmu/mmu_enable.S | $(BUILD_DIR)
 
 # C files - MMU
 $(BUILD_DIR)/mmu.o: $(SRC)/kernel/mmu/mmu.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# C files - Filesystem
+$(BUILD_DIR)/vfs.o: $(SRC)/kernel/fs/vfs.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/ramfs.o: $(SRC)/kernel/fs/ramfs.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 
