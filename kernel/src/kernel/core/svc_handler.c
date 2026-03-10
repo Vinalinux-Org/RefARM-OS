@@ -5,9 +5,7 @@
  * Implements the system call dispatcher and user/kernel boundary
  * ============================================================ */
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
+#include "types.h"
 #include "assert.h"
 #include "trace.h"
 #include "scheduler.h"

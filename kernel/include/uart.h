@@ -9,7 +9,7 @@
 #ifndef UART_H
 #define UART_H
 
-#include <stdint.h>
+#include "types.h"
 #include <stdarg.h>
 
 /* ============================================================

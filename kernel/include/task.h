@@ -8,7 +8,7 @@
 #ifndef TASK_H
 #define TASK_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * Task Context Structure

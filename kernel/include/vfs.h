@@ -7,8 +7,7 @@
 #ifndef VFS_H
 #define VFS_H
 
-#include <stdint.h>
-#include <stdbool.h>
+#include "types.h"
 
 /* ============================================================
  * Constants

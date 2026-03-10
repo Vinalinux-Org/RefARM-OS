@@ -8,8 +8,8 @@
 #include "task.h"
 #include "uart.h"
 #include "cpu.h"
-#include <stddef.h>
-#include <stdbool.h>
+#include "string.h"
+#include "types.h"
 #include "trace.h"
 #include "assert.h"
 #include "syscalls.h" /* For process_info_t */
@@ -423,13 +423,13 @@ int scheduler_get_tasks(void *buf, uint32_t max_count)
         if (t != NULL) {
             info[count].id = t->id;
             
-            /* Copy name manually (no strcpy) */
+            /* Copy name using string library */
             const char *src = t->name ? t->name : "unknown";
             int copy_len = 0;
             while(src[copy_len] && copy_len < 31) {
-                info[count].name[copy_len] = src[copy_len];
                 copy_len++;
             }
+            memcpy(info[count].name, src, copy_len);
             info[count].name[copy_len] = '\0';
             
             info[count].state = t->state;

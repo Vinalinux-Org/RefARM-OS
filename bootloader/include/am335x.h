@@ -148,12 +148,12 @@
 #define EMIF_SDRAM_CONFIG2  (EMIF_BASE + 0x0C)
 #define EMIF_SDRAM_REF_CTRL (EMIF_BASE + 0x10)
 #define EMIF_SDRAM_REF_CTRL_SHDW (EMIF_BASE + 0x14)
-#define EMIF_SDRAM_TIM_1    (EMIF_BASE + 0x18)  /* TRM Ch7: offset 0x018 */
-#define EMIF_SDRAM_TIM_2    (EMIF_BASE + 0x20)  /* TRM Ch7: offset 0x020 */
-#define EMIF_SDRAM_TIM_3    (EMIF_BASE + 0x28)  /* TRM Ch7: offset 0x028 */
+#define EMIF_SDRAM_TIM_1    (EMIF_BASE + 0x18)  /* SDRAM timing parameters 1 */
+#define EMIF_SDRAM_TIM_2    (EMIF_BASE + 0x20)  /* SDRAM timing parameters 2 */
+#define EMIF_SDRAM_TIM_3    (EMIF_BASE + 0x28)  /* SDRAM timing parameters 3 */
 #define EMIF_PWR_MGMT_CTRL  (EMIF_BASE + 0x38)
 #define EMIF_DDR_PHY_CTRL_1 (EMIF_BASE + 0xE4)
-#define EMIF_DDR_PHY_CTRL_2 (EMIF_BASE + 0xEC)  /* TRM: shadow reg at 0xEC */
+#define EMIF_DDR_PHY_CTRL_2 (EMIF_BASE + 0xEC)  /* DDR PHY control shadow register */
 
 /* DDR PHY Control */
 /* DDR PHY Control */

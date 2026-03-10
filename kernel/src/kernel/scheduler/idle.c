@@ -8,7 +8,7 @@
 #include "idle.h"
 #include "task.h"
 #include "scheduler.h"
-#include <stdbool.h>
+#include "types.h"
 
 /* Idle task stack (4KB) */
 #define IDLE_STACK_SIZE 4096

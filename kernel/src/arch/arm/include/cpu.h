@@ -7,7 +7,7 @@
 #ifndef CPU_H
 #define CPU_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * CPSR Bit Definitions

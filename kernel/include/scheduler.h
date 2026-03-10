@@ -8,7 +8,7 @@
 #ifndef SCHEDULER_H
 #define SCHEDULER_H
 
-#include <stdint.h>
+#include "types.h"
 #include "task.h"
 
 /* ============================================================

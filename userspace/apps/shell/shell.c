@@ -34,7 +34,7 @@ void shell_puts(const char *s)
 {
     /*
      * Buffer on stack (valid user memory)
-     * Copying string literal to stack bypasses validation checks
+     * Copying string to stack bypasses validation checks
      * on .rodata and reduces syscall overhead.
      */
     char buf[64];
@@ -42,7 +42,7 @@ void shell_puts(const char *s)
 
     while (*s)
     {
-        /* Handle Newline expansion */
+        /* Handle newline expansion */
         if (*s == '\n')
         {
             /* Flush current buffer if full or before newline */

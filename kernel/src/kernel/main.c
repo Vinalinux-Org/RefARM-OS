@@ -16,7 +16,7 @@
 #include "vfs.h"
 #include "ramfs.h"
 #include "syscalls.h"
-#include <stdbool.h>
+#include "types.h"
 /* ============================================================
  * User Space Payload (Defined in payload.S)
  * ============================================================ */

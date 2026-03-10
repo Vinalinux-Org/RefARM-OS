@@ -47,3 +47,6 @@ temp/
 # Documentation
 tech_docs/
 docs/
+.agent/
+docs_trainingAI/
+AGENT_RULES.md

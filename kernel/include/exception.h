@@ -8,7 +8,7 @@
 #ifndef EXCEPTION_H
 #define EXCEPTION_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * Exception Context Structure

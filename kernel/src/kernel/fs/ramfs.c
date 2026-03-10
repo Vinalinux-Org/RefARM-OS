@@ -8,7 +8,8 @@
 #include "vfs.h"
 #include "syscalls.h"
 #include "uart.h"
-#include <stddef.h>
+#include "string.h"
+#include "types.h"
 
 /* ============================================================
  * External Symbols (Defined in payload.S)
@@ -43,45 +44,6 @@ static struct ramfs_file ramfs_file_table[] = {
         .size = 0
     }
 };
-
-/* ============================================================
- * Helper: String Comparison
- * ============================================================ */
-
-static int strcmp(const char *s1, const char *s2)
-{
-    while (*s1 && (*s1 == *s2)) {
-        s1++;
-        s2++;
-    }
-    return *(unsigned char *)s1 - *(unsigned char *)s2;
-}
-
-/* ============================================================
- * Helper: String Copy
- * ============================================================ */
-
-static void strcpy(char *dst, const char *src)
-{
-    while (*src) {
-        *dst++ = *src++;
-    }
-    *dst = '\0';
-}
-
-/* ============================================================
- * Helper: Memory Copy
- * ============================================================ */
-
-static void memcpy(void *dst, const void *src, uint32_t len)
-{
-    uint8_t *d = (uint8_t *)dst;
-    const uint8_t *s = (const uint8_t *)src;
-    
-    for (uint32_t i = 0; i < len; i++) {
-        d[i] = s[i];
-    }
-}
 
 /* ============================================================
  * Helper: Minimum

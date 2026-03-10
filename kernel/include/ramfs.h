@@ -7,7 +7,7 @@
 #ifndef RAMFS_H
 #define RAMFS_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * RAMFS File Structure

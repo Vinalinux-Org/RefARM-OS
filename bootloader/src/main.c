@@ -1,9 +1,9 @@
-/* main.c - Refined Boot Flow */
+/* main.c - Bootloader main function and boot flow */
 #include "am335x.h"
 #include "boot.h"
 #include <stdbool.h>
 
-/* Boot parameters structure to pass to kernel */
+/* Boot parameters structure passed to kernel */
 struct boot_params {
     uint32_t reserved;
     uint32_t mem_desc_addr;  /* Pointer to memory device descriptor */
@@ -57,7 +57,7 @@ void c_data_abort_handler(void) {
 
 void c_undef_handler(void) {
     uint32_t ifsr, ifar;
-    /* Read Instruction Fault Status/Address from CP15 (ARMv7-A TRM B3.18) */
+    /* Read Instruction Fault Status and Address from CP15 */
     asm volatile("mrc p15, 0, %0, c5, c0, 1" : "=r" (ifsr));  /* IFSR */
     asm volatile("mrc p15, 0, %0, c6, c0, 2" : "=r" (ifar));  /* IFAR */
 
@@ -74,18 +74,18 @@ void bootloader_main(void)
     struct boot_params params;
     
     /* --------------------------------------------------------
-     * STAGE 0: Enable essential clocks (PRCM)
-     * Must be done before any peripheral access (TRM Chap 8)
+     * STAGE 0: Enable essential clocks
+     * Must be done before any peripheral access
      * -------------------------------------------------------- */
-    writel(0x2, CM_PER_L4LS_CLKSTCTRL);  // Enable L4LS clock
-    writel(0x2, CM_PER_L3_CLKSTCTRL);    // Enable L3 clock
-    writel(0x2, CM_PER_L4FW_CLKSTCTRL);  // Enable L4FW clock
-    delay(1000);  // Allow clocks to stabilize
+    writel(0x2, CM_PER_L4LS_CLKSTCTRL);  /* Enable L4LS clock */
+    writel(0x2, CM_PER_L3_CLKSTCTRL);    /* Enable L3 clock */
+    writel(0x2, CM_PER_L4FW_CLKSTCTRL);  /* Enable L4FW clock */
+    delay(1000);  /* Allow clocks to stabilize */
 
     /* --------------------------------------------------------
      * STAGE 1: Disable Watchdog Timer 1 (WDT1)
-     * ROM code typically enables it with ~3min timeout.
-     * Must be disabled to prevent sudden reset during boot.
+     * ROM code enables watchdog with ~3 minute timeout
+     * Disable to prevent unexpected reset during boot
      * -------------------------------------------------------- */
     writel(0xAAAA, WDT1_WSPR);
     while (readl(WDT1_WWPS) != 0);
@@ -93,14 +93,14 @@ void bootloader_main(void)
     while (readl(WDT1_WWPS) != 0);
 
     /* --------------------------------------------------------
-     * STAGE 1: Early UART initialization
+     * STAGE 2: Early UART initialization
      * -------------------------------------------------------- */
     uart_init();
     
     /* Delay for UART stabilization */
     delay(1000000);
 
-    /* Clear screen - send newlines to push ROM garbage away */
+    /* Clear screen - send newlines to clear ROM output */
     for (int i = 0; i < 10; i++) {
         uart_putc('\r');
         uart_putc('\n');
@@ -108,7 +108,7 @@ void bootloader_main(void)
     delay(100000);
 
     /* --------------------------------------------------------
-     * STAGE 2: Print banner
+     * STAGE 3: Print boot banner
      * -------------------------------------------------------- */
     uart_puts("========================================\r\n");
     uart_puts("RefARM-OS Bootloader\r\n");
@@ -119,13 +119,12 @@ void bootloader_main(void)
     uart_puts("\r\n");
 
     /* --------------------------------------------------------
-     * STAGE 3: Clock configuration (DDR PLL only)
+     * STAGE 4: Clock configuration (DDR PLL only)
      * -------------------------------------------------------- */
     uart_puts("Clock:  Configuring DDR PLL for 400MHz... ");
     
-    /* Only configure DDR PLL, ROM has already configured others.
-     * clock_init() is silent - it does NOT reinit UART or print logs.
-     * PER PLL (UART 48MHz source) is NOT touched. */
+    /* Configure DDR PLL for 400MHz operation
+     * Other PLLs (MPU, PER, CORE) already configured by ROM */
     clock_init();
     
     uart_puts("Done.\r\n");
@@ -133,7 +132,7 @@ void bootloader_main(void)
     uart_puts("\r\n");
 
     /* --------------------------------------------------------
-     * STAGE 4: DDR initialization
+     * STAGE 5: DDR initialization
      * -------------------------------------------------------- */
     uart_puts("DDR:    Initializing 256MB DDR3...\r\n");
     ddr_init();
@@ -150,7 +149,7 @@ void bootloader_main(void)
     uart_puts("\r\n");
 
     /* --------------------------------------------------------
-     * STAGE 5: Initialize MMC/SD and load kernel
+     * STAGE 6: Initialize MMC/SD and load kernel
      * -------------------------------------------------------- */
     uart_puts("MMC:    Initializing SD card...\r\n");
     
@@ -160,11 +159,10 @@ void bootloader_main(void)
     
     uart_puts("MMC:    Initialized OK\r\n");
     
-    /* Load kernel from SD card sector 2048 (offset 1MB)
-     * Kernel is at 0x80000000 in DDR memory */
+    /* Load kernel from SD card sector 2048 (offset 1MB) */
     #define KERNEL_BASE_ADDR   0x80000000
     #define KERNEL_START_SECTOR 2048
-    #define KERNEL_SIZE_SECTORS 2048  /* 1MB kernel max (2048 sectors * 512 bytes) */
+    #define KERNEL_SIZE_SECTORS 2048  /* 1MB kernel max */
     
     uart_puts("MMC:    Loading kernel from SD card...\r\n");
     
@@ -177,42 +175,37 @@ void bootloader_main(void)
     uart_puts("\r\n");
 
     /* --------------------------------------------------------
-     * STAGE 6: Prepare boot parameters for kernel
+     * STAGE 7: Prepare boot parameters for kernel
      * -------------------------------------------------------- */
     uart_puts("Boot:   Setting up boot parameters...\r\n");
     
     /* Initialize boot parameters */
     params.reserved = 0;
-    params.mem_desc_addr = 0;  /* TODO: Fill with actual memory descriptor if available */
-    params.boot_device = 0x08; /* MMC0 boot device code per BootROM spec */
+    params.mem_desc_addr = 0;  /* TODO: Memory descriptor if available */
+    params.boot_device = 0x08; /* MMC0 boot device code */
     params.reset_reason = 0x01; /* Power-on (cold) reset */
     params.reserved2 = 0;
     params.reserved3 = 0;
     
     /* --------------------------------------------------------
-     * STAGE 7: Jump to kernel
+     * STAGE 8: Jump to kernel
      * -------------------------------------------------------- */
     uart_puts("========================================\r\n");
     uart_puts("Boot:   Jumping to kernel @ 0x80000000\r\n");
     
-    /* Verify kernel image header (first instruction)
-     *
-     * Legacy kernel layout started with a reset branch instruction.
-     * Newer kernels start with an ARM vector table using:
-     *   LDR pc, [pc, #imm]  (0xE59FFxxx)
-     *
-     * This check is only a sanity filter to catch empty/garbage loads.
-     */
+    /* Verify kernel image header (sanity check) */
     uint32_t *magic = (uint32_t *)0x80000000;
     uint32_t first = *magic;
-    bool ok_branch = ((first & 0xFF000000) == 0xEA000000);
-    bool ok_ldr_vec = ((first & 0xFFFFF000) == 0xE59FF000);
+    bool ok_branch = ((first & 0xFF000000) == 0xEA000000);  /* Branch instruction */
+    bool ok_ldr_vec = ((first & 0xFFFFF000) == 0xE59FF000); /* LDR pc vector */
     bool ok = (ok_branch || ok_ldr_vec) && first != 0x00000000 && first != 0xFFFFFFFF;
+    
     if (!ok) {
         uart_puts("KERNEL MAGIC FAIL: ");
         uart_print_hex(first);
         panic(" - Invalid kernel image!");
     }
+    
     uart_puts("Kernel: Magic = ");
     uart_print_hex(first);
     uart_puts(" OK\r\n");
@@ -220,16 +213,13 @@ void bootloader_main(void)
     uart_puts("========================================\r\n");
     uart_puts("\r\n");
     
-    /* Flush UART TX FIFO - ensure all log bytes are transmitted
-     * before CPU jumps away. Using uart_flush() is correct here;
-     * delay() is unreliable across clock/silicon variations. */
+    /* Flush UART TX FIFO before jumping to kernel */
     uart_flush();
     
-    /* Jump to kernel with ARM Linux boot parameters:
+    /* Jump to kernel with ARM boot parameters:
      * r0 = 0
-     * r1 = architecture/mach_type
-     * r2 = pointer to ATAGS or custom params 
-     */
+     * r1 = machine type (BeagleBone Black = 3589)
+     * r2 = pointer to boot parameters */
     asm volatile(
         "mov r0, #0\n"
         "ldr r1, =0x0E05\n"     /* BeagleBone Black MACH_TYPE (3589) */

@@ -1,12 +1,12 @@
 /* ============================================================
  * utils.c
- * Utility functions
+ * Utility functions for bootloader
  * ============================================================ */
 
 #include "boot.h"
 
 /* ============================================================
- * Memory copy
+ * Memory copy function
  * ============================================================ */
 void *memcpy(void *dest, const void *src, size_t n)
 {
@@ -21,7 +21,7 @@ void *memcpy(void *dest, const void *src, size_t n)
 }
 
 /* ============================================================
- * Memory set
+ * Memory set function
  * ============================================================ */
 void *memset(void *s, int c, size_t n)
 {

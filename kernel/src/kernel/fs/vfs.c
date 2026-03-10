@@ -8,7 +8,8 @@
 #include "ramfs.h"
 #include "syscalls.h"
 #include "uart.h"
-#include <stddef.h>
+#include "string.h"
+#include "types.h"
 
 /* Forward declaration */
 static struct vfs_operations *vfs_find_fs(const char *path);
@@ -24,19 +25,6 @@ struct vfs_fd {
 };
 
 static struct vfs_fd fd_table[MAX_FDS];
-
-/* ============================================================
- * Helper: String Comparison
- * ============================================================ */
-
-static int strcmp(const char *s1, const char *s2)
-{
-    while (*s1 && (*s1 == *s2)) {
-        s1++;
-        s2++;
-    }
-    return *(unsigned char *)s1 - *(unsigned char *)s2;
-}
 
 /* ============================================================
  * VFS Mount Table

@@ -5,7 +5,7 @@
  * System Call Wrappers
  * ------------------------------------------------------------
  * Assembly wrappers for SVC instruction to ensure correct
- * register setup and avoid compiler optimization issues.
+ * register setup and avoid compiler optimization.
  * ============================================================ */
 
 /* ============================================================
@@ -88,7 +88,7 @@ int sys_read(void *buf, uint32_t len)
         "mov    %0, r0\n\t"          /* Save return value */
         : "=r" (ret)                 /* Output: ret */
         : "r" (buf), "r" (len)       /* Inputs: buf, len */
-        /* Clobbers: r0-r3 are arguments/result, r7 is ID. 
+        /* Clobbers: r0-r3 are arguments/result, r7 is syscall ID
          * "memory" is crucial because we write to buf */
         : "r0", "r1", "r2", "r7", "memory"
     );

@@ -1,14 +1,14 @@
 /* ============================================================
  * crt0.S
  * ------------------------------------------------------------
- * User Application Startup Code for RefARM-OS SDK
+ * User Application Startup Code for RefARM-OS
  * ============================================================
  * Execution Flow:
- * 1. Kernel creates task and jumps to _start (0x40000000).
- *    - Initial Stack Pointer is set up by Kernel.
- * 2. Clear .bss section.
- * 3. Call C entry point (main).
- * 4. If main returns, call sys_exit.
+ * 1. Kernel creates task and jumps to _start (0x40000000)
+ *    - Initial Stack Pointer is set up by Kernel
+ * 2. Clear .bss section
+ * 3. Call C entry point (main)
+ * 4. If main returns, call sys_exit
  * ============================================================ */
 
 .syntax unified
@@ -19,8 +19,8 @@
 .section .text.crt0
 
 _start:
-    /* Kernel already sets SP for this task.
-     * We don't need to initialize the stack pointer here. */
+    /* Kernel already sets SP for this task
+     * We don't need to initialize the stack pointer here */
 
     /* 1. Clear BSS */
     ldr r0, =_bss_start
@@ -36,8 +36,8 @@ _start:
     /* 2. Call main() */
     bl main
 
-    /* 3. Call sys_exit(status) 
-     * R0 contains return value from main(), which we pass to sys_exit. 
+    /* 3. Call sys_exit(status)
+     * R0 contains return value from main(), which we pass to sys_exit
      * sys_exit is an assembly wrapper in syscall.c */
     bl sys_exit
 

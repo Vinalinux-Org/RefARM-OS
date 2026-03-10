@@ -8,7 +8,7 @@
 #ifndef INTC_H
 #define INTC_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * INTC Hardware Definitions

@@ -1,31 +1,26 @@
 /* ============================================================
  * uart.c
- * Simple UART0 Driver for AM335x
+ * UART0 Driver for AM335x (BeagleBone Black)
  * ============================================================ */
 
 #include "am335x.h"
 #include "boot.h"
 
-
-
-/* Helper: Write 32-bit register */
-/* writel is defined in am335x.h */
-
-#define UART_FCLK_HZ    48000000    /* 48MHz */
+/* UART configuration constants */
+#define UART_FCLK_HZ    48000000    /* 48MHz (from PER PLL) */
 #define UART_BAUDRATE   115200
 
-#define UART_LCR_8N1    0x03
-#define UART_LCR_BAUD_SETUP 0x83  /* Divisor Latch Enable + 8N1 */
-#define UART_MDR1_16X   0x00
-#define UART_DISABLE    0x07
+#define UART_LCR_8N1    0x03        /* 8 data bits, no parity, 1 stop */
+#define UART_LCR_BAUD_SETUP 0x83    /* Divisor Latch Enable + 8N1 */
+#define UART_MDR1_16X   0x00        /* 16x oversampling mode */
+#define UART_DISABLE    0x07        /* Disable UART mode */
 
-/* Calculate divisor for 16x mode */
-/* Divisor = FCLK / (16 * Baud) */
-/* 48000000 / (16 * 115200) = 26.04 -> 26 */
+/* Baud rate divisor calculation:
+ * Divisor = FCLK / (16 * Baud) = 48,000,000 / (16 * 115200) ≈ 26 */
 
 void uart_flush(void)
 {
-    /* Wait for TX FIFO and Shift Register to be empty */
+    /* Wait for TX FIFO and shift register to be empty */
     while ((readl(UART0_LSR) & UART_LSR_TEMT) == 0);
 }
 
@@ -34,17 +29,14 @@ void uart_init(void)
     uint32_t divisor;
     uint32_t i;
     
-    /* IMPORTANT: According to BootROM doc Table 26-6, UART_CLK = 48MHz
-     * from PER_CLKOUTM2. This should remain constant even after DDR PLL config.
-     * However, let's be safe and use a more robust initialization sequence.
-     */
+    /* UART clock is 48MHz from PER PLL (configured by ROM) */
     
-    /* 1. Hard reset UART by disabling it completely */
+    /* 1. Hard reset UART by disabling it */
     writel(UART_DISABLE, UART0_MDR1);
     delay(10000);
     
-    /* 2. Clear FIFOs and drain any garbage */
-    writel(0x07, UART0_FCR);  /* Enable + Reset TX/RX FIFOs */
+    /* 2. Clear FIFOs and drain any garbage data */
+    writel(0x07, UART0_FCR);  /* Enable + reset TX/RX FIFOs */
     delay(1000);
     
     /* Drain RX FIFO completely */
@@ -57,26 +49,25 @@ void uart_init(void)
     }
     
     /* 3. Configure baud rate: 115200 @ 48MHz
-     * Divisor = 48,000,000 / (16 * 115200) = 26.0416 ≈ 26
-     * Actual baud = 48,000,000 / (16 * 26) = 115,384.6 (0.16% error - acceptable)
-     */
-    divisor = 26;  /* Fixed value for 48MHz clock */
+     * Divisor = 48,000,000 / (16 * 115200) ≈ 26
+     * Actual baud rate: 115,384.6 bps (0.16% error, acceptable) */
+    divisor = 26;
     
     /* Enable divisor latch access */
     writel(UART_LCR_BAUD_SETUP, UART0_LCR);
     
-    /* Set divisor */
+    /* Set divisor (16-bit value) */
     writel(divisor & 0xFF, UART0_DLL);
     writel((divisor >> 8) & 0xFF, UART0_DLH);
     
-    /* 4. Configure line: 8N1 (8 data bits, no parity, 1 stop) */
+    /* 4. Configure line format: 8N1 */
     writel(UART_LCR_8N1, UART0_LCR);
     
     /* 5. Configure FIFO (enable, clear, trigger level) */
-    writel(0x07, UART0_FCR);  /* Enable + Reset TX/RX, trigger level 1 */
+    writel(0x07, UART0_FCR);
     delay(1000);
     
-    /* 6. Enable UART in 16x mode */
+    /* 6. Enable UART in 16x oversampling mode */
     writel(UART_16X_MODE, UART0_MDR1);
     
     /* 7. Wait for UART to stabilize */
@@ -86,28 +77,28 @@ void uart_init(void)
     while ((readl(UART0_LSR) & UART_LSR_TEMT) == 0);
 }
 
-/* Put single character */
+/* Send single character */
 void uart_putc(char c)
 {
-    /* Handle newline: send CR BEFORE LF */
+    /* Handle newline: send CR before LF */
     if (c == '\n') {
         uart_putc('\r');
     }
     
-    /* Wait for THRE (TX FIFO Empty) BEFORE writing */
+    /* Wait for TX FIFO empty before writing */
     while ((readl(UART0_LSR) & UART_LSR_TXFIFOE) == 0);
     
-    /* Write character */
+    /* Write character to transmit register */
     writeb(c, UART0_THR);
     
-    /* Delay to ensure Write propagates to LSR status update */
+    /* Small delay for status update */
     { volatile int d; for(d=0; d<100; d++); }
 
-    /* Wait for THRE (TX FIFO Empty) AFTER writing */
+    /* Wait for TX FIFO empty after writing */
     while ((readl(UART0_LSR) & UART_LSR_TXFIFOE) == 0);
 }
 
-/* Put string */
+/* Send string */
 void uart_puts(const char *s)
 {
     while (*s) {
@@ -115,7 +106,7 @@ void uart_puts(const char *s)
     }
 }
 
-/* Print hex value (Robust) */
+/* Print hexadecimal value */
 void uart_print_hex(uint32_t val)
 {
     int i;
@@ -123,12 +114,9 @@ void uart_print_hex(uint32_t val)
     
     uart_puts("0x");
     
+    /* Print 8 hexadecimal digits (32 bits) */
     for (i = 28; i >= 0; i -= 4) {
         int nibble = (val >> i) & 0xF;
-        if (nibble < 0 || nibble > 15) {
-            uart_putc('?');
-        } else {
-            uart_putc(hex_digits[nibble]);
-        }
+        uart_putc(hex_digits[nibble]);
     }
 }

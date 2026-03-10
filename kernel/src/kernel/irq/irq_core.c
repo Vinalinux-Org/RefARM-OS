@@ -7,7 +7,7 @@
 #include "irq.h"
 #include "intc.h"
 #include "uart.h"
-#include <stddef.h>
+#include "types.h"
 
 /* ============================================================
  * IRQ Descriptor

@@ -1,7 +1,7 @@
 #ifndef _SYSCALLS_H
 #define _SYSCALLS_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * System Call Numbers (ABI Contract)

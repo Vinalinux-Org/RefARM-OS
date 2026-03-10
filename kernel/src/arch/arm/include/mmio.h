@@ -8,7 +8,7 @@
 #ifndef MMIO_H
 #define MMIO_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* ============================================================
  * 32-bit MMIO operations

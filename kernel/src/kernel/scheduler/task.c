@@ -8,7 +8,7 @@
 #include "cpu.h"
 #include "uart.h"
 #include "assert.h"
-#include <stddef.h>
+#include "types.h"
 
 /* ============================================================
  * Task Stack Initialization

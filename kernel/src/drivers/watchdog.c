@@ -33,23 +33,23 @@
 void watchdog_disable(void)
 {
     /*
-     * Watchdog disable sequence:
+     * Watchdog disable sequence
      * 
      * CRITICAL: Must enable watchdog clock first before accessing registers!
-     * Without this, writes to WDT registers will hang/fail.
+     * Without this, writes to WDT registers will hang or fail.
      */
     
     /* Step 1: Enable watchdog module clock */
     mmio_write32(CM_WKUP_BASE + CM_WKUP_WDT1_CLKCTRL, 0x2);
     
-    /* Wait for clock to be enabled (IDLEST bits = 0) */
+    /* Wait for clock to be enabled */
     while ((mmio_read32(CM_WKUP_BASE + CM_WKUP_WDT1_CLKCTRL) & 0x3) != 0x2)
         ;
     
     /* Step 2: First disable sequence */
     mmio_write32(WDT1_BASE + WDT_WSPR, WDT_DISABLE_SEQ1);
     
-    /* Wait for write to complete (WWPS register) */
+    /* Wait for write to complete */
     while (mmio_read32(WDT1_BASE + WDT_WWPS))
         ;
     

@@ -4,7 +4,7 @@
  * UART Driver
  * ============================================================ */
 
-#include <stddef.h>
+#include "types.h"
 #include "uart.h"
 #include "mmio.h"
 #include "cpu.h"
@@ -147,33 +147,29 @@ void uart_enable_rx_interrupt(void)
     /* Wait for clock to be functional */
     while ((mmio_read32(CM_PER_UART0_CLKCTRL) & 0x30000) != 0);
     
-    /* Save current LCR */
+    /* Save current line control register */
     uint32_t lcr_save = mmio_read32(UART0_BASE + UART_LCR);
     
     /* Ensure operational mode */
     mmio_write32(UART0_BASE + UART_LCR, lcr_save & 0x7F);
     
-    /* Clear IER */
+    /* Clear interrupt enable register */
     mmio_write32(UART0_BASE + UART_IER, 0x00);
     
     /* Configure FIFO - simple legacy mode
-     * FCR = 0x07: FIFO_EN + RX_CLR + TX_CLR + 8-char trigger
-     */
+     * Enable FIFO + clear RX/TX + 8-char trigger */
     mmio_write32(UART0_BASE + UART_FCR, 0x07);
     
-    /* Small delay for FCR to take effect */
+    /* Small delay for FIFO configuration to take effect */
     for (volatile int i = 0; i < 1000; i++);
     
-    /* Configure SCR for 1-char granularity
-     * SCR[7] RX_TRIG_GRANU1 = 1: 1-character granularity
-     * SCR[6] TX_TRIG_GRANU1 = 1: 1-character granularity
-     */
+    /* Configure supplementary control register for 1-char granularity */
     mmio_write32(UART0_BASE + UART_SCR, 0xC0);
     
-    /* Restore LCR */
+    /* Restore line control register */
     mmio_write32(UART0_BASE + UART_LCR, lcr_save);
     
-    /* Enable RHR interrupt */
+    /* Enable RX interrupt */
     mmio_write32(UART0_BASE + UART_IER, IER_RHR_IT);
     
     /* Register IRQ handler */
@@ -182,7 +178,7 @@ void uart_enable_rx_interrupt(void)
         return;  /* Registration failed */
     }
     
-    /* Enable IRQ in INTC */
+    /* Enable IRQ in interrupt controller */
     intc_enable_irq(UART0_IRQ);
 }
 
@@ -267,8 +263,8 @@ uint32_t uart_get_irq_fire_count(void)
  */
 
 /* 
- * Simple internal division/modulo to avoid libgcc dependency (__aeabi_uidivmod).
- * This ensures no register clobbering surprises (like r9) in critical sections.
+ * Simple internal division/modulo to avoid libgcc dependency.
+ * This ensures no register clobbering surprises in critical sections.
  */
 static void simple_udivmod(uint32_t n, uint32_t d, uint32_t *q, uint32_t *r)
 {
