@@ -1,7 +1,11 @@
 # Build Directories
 /build/
-/bootloader/build/
-/kernel/build/
+/VinixOS/bootloader/build/
+/VinixOS/kernel/build/
+/VinixOS/userspace/build/
+/CrossCompiler/toolchain/build/
+/CrossCompiler/toolchain/dist/
+/CrossCompiler/toolchain/*.egg-info/
 
 # Build Artifacts (Global)
 *.o
@@ -46,7 +50,24 @@ temp/
 
 # Documentation
 tech_docs/
-docs/
 .agent/
 docs_trainingAI/
 AGENT_RULES.md
+
+# Python virtual environment
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+
+# CrossCompiler runtime artifacts
+/CrossCompiler/toolchain/runtime/*.a

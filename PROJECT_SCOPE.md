@@ -1,6 +1,6 @@
 # PROJECT_SCOPE
 
-RefARM Reference Platform
+VinixOS Reference Platform
 
 ---
 
@@ -29,7 +29,7 @@ Mục tiêu của dự án là tạo một reference platform phục vụ:
 ### Lộ trình tổng thể
 
 ```text
-Phase 1: RefARM Platform
+Phase 1: VinixOS Platform
    Boot + BSP + Minimal OS + Userspace
    ↓
 Phase 2: Self-hosted Compiler
@@ -125,7 +125,7 @@ Kernel dạng monolithic tối giản.
 - Không hướng tới POSIX compatibility.
 
 ### 4.4. Userspace
-**Mục tiêu:** Xây dựng user application chạy độc lập ở User Mode trên RefARM OS — tách biệt hoàn toàn khỏi kernel image. Đây là "userland" tối giản của platform, tương đương với userspace trong Linux.
+**Mục tiêu:** Xây dựng user application chạy độc lập ở User Mode trên VinixOS — tách biệt hoàn toàn khỏi kernel image. Đây là "userland" tối giản của platform, tương đương với userspace trong Linux.
 
 **4.4.1. Build Toolchain**
 - Cross-compiler cho ARMv7-A dựa trên GCC / binutils.
@@ -205,12 +205,13 @@ Dự án Phase 1 được coi là hoàn thành khi:
 
 ### 9.1. Mục tiêu
 
-Tự phát triển một compiler hoàn chỉnh nhắm đến kiến trúc ARMv7-A, sử dụng chính platform RefARM (Phase 1) làm target hardware để chạy và validate output.
+Tự phát triển một compiler hoàn chỉnh nhắm đến kiến trúc ARMv7-A, sử dụng chính platform VinixOS (Phase 1) làm target hardware để chạy và validate output.
 
 Mục tiêu cốt lõi:
 - Hiểu sâu toàn bộ pipeline compiler: từ source text đến binary chạy được trên hardware thật.
 - Không phụ thuộc LLVM hoặc GCC backend (tự xây dựng toàn bộ).
-- Compiler output phải chạy được trực tiếp trên BeagleBone Black qua RefARM OS.
+- Compiler là **cross compiler**: chạy trên host x86, output binary ARMv7-A chạy trên BeagleBone Black qua VinixOS.
+- Compiler implement bằng Python — chạy trên host, không cần chạy trên board.
 - Tài liệu hóa đầy đủ từng giai đoạn compile.
 
 ### 9.2. Kiến trúc compiler
@@ -232,18 +233,18 @@ Source Code
    ↓
 [Assembler / Linker] — produce ELF binary
    ↓
-Binary chạy trên RefARM Platform
+Binary chạy trên VinixOS Platform
 ```
 
 ### 9.3. Quyết định kỹ thuật
 
 | Hạng mục | Quyết định | Lý do |
 |---|---|---|
-| **Ngôn ngữ implement compiler** | **C** | Dùng xuyên suốt Phase 1. Tài liệu tham khảo phong phú nhất. Gần với tư duy assembly khi debug. Con đường tự nhiên đến self-hosting. |
+| **Ngôn ngữ implement compiler** | **Python** | Cross compiler chạy trên host x86 — không cần chạy trên BeagleBone. Python cho phép prototype nhanh, tập trung vào pipeline concept thay vì memory management. Không ràng buộc kỹ thuật nào yêu cầu C khi mục tiêu là cross compile. |
 | **Ngôn ngữ nguồn (source language)** | **Subset of C** | Đủ để học toàn bộ pipeline. Có thể so sánh output với GCC. Không mất thời gian thiết kế ngôn ngữ mới. |
 | **Backend** | **Tự viết toàn bộ (không LLVM)** | Mục tiêu là hiểu sâu — LLVM sẽ che khuất phần codegen quan trọng nhất. |
 | **IR format** | **3-address code** | Đơn giản hơn SSA, dễ implement cho người mới, đủ để học codegen thực sự. |
-| **Output format** | **ELF** | Tương thích RefARM loader và linker script từ Phase 1. |
+| **Output format** | **ELF** | Tương thích VinixOS loader và linker script từ Phase 1. |
 
 **Subset C bao gồm tối thiểu:**
 - Kiểu dữ liệu: `int`, `char`, `pointer`
@@ -287,11 +288,11 @@ Binary chạy trên RefARM Platform
 - Register allocation (naive hoặc linear scan).
 - AAPCS calling convention — dựa trực tiếp trên kinh nghiệm Phase 1.
 - Stack frame management.
-- Syscall emit tương thích RefARM syscall ABI.
+- Syscall emit tương thích VinixOS syscall ABI.
 
 **9.4.6. Assembler & Linker**
 - Tự viết assembler tối giản hoặc tích hợp với GNU as.
-- Linker tạo ELF binary tương thích RefARM memory map.
+- Linker tạo ELF binary tương thích VinixOS memory map.
 - Linker script tái sử dụng từ Phase 1 SDK.
 
 ### 9.5. Mối liên hệ với Phase 1
@@ -304,19 +305,19 @@ Phase 1 cung cấp cho Phase 2:
 | AAPCS calling convention (thực hành) | ABI cho compiler output |
 | Syscall interface (`write`, `exit`, `yield`) | Runtime syscall emit |
 | Linker script & memory map | Linker configuration |
-| RefARM OS + Board | Execution environment để test compiler output |
+| VinixOS + Board | Execution environment để test compiler output |
 | Measurement framework | Validate compiler output performance |
 
 ### 9.6. Example Programs (Phase 2)
 
-- Hello world được compile bởi compiler tự viết, chạy trên RefARM.
+- Hello world được compile bởi compiler tự viết, chạy trên VinixOS.
 - Chương trình đệ quy (kiểm tra stack frame và calling convention).
 - Chương trình có syscall (kiểm tra ABI tương thích).
 - Self-hosting test (compiler tự compile một phần của chính nó — mục tiêu dài hạn, optional).
 
 ### 9.7. Validation
 
-- Output binary chạy đúng trên BeagleBone Black qua RefARM OS.
+- Output binary chạy đúng trên BeagleBone Black qua VinixOS.
 - So sánh output assembly với GCC -O0 để kiểm tra tính đúng đắn.
 - Đo performance overhead so với GCC output.
 - Tất cả kết quả ghi lại trong tài liệu kỹ thuật.
@@ -324,8 +325,8 @@ Phase 1 cung cấp cho Phase 2:
 ### 9.8. Tiêu chí hoàn thành (Phase 2)
 
 - Compiler build được chương trình Subset C cơ bản (int, pointer, if/while, function call).
-- Output binary chạy đúng trên RefARM Platform (BeagleBone Black).
-- Syscall tương thích với RefARM OS.
+- Output binary chạy đúng trên VinixOS Platform (BeagleBone Black).
+- Syscall tương thích với VinixOS.
 - Có tài liệu kỹ thuật đầy đủ cho từng component compiler.
 - Có kết quả so sánh với GCC output.
 
