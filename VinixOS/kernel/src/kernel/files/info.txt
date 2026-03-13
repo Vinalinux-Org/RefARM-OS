@@ -1,0 +1,24 @@
+# VinixOS
+
+A minimal reference ARM operating system for BeagleBone Black.
+
+## Features
+
+- ARMv7-A Cortex-A8 support
+- Preemptive multitasking scheduler
+- User/Kernel mode separation
+- MMU with 3G/1G virtual memory split
+- System call interface
+- Interactive shell
+- RAM filesystem (read-only)
+
+## Platform
+
+- Board: BeagleBone Black
+- SoC: Texas Instruments AM3358
+- CPU: ARM Cortex-A8 (ARMv7-A)
+- Memory: 512MB DDR3
+
+## Developer
+
+Email: vinalinux2022@gmail.com

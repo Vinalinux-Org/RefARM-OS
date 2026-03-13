@@ -19,8 +19,8 @@ fi
 # Resolve Project Root (Robust)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOPDIR="$(dirname "$SCRIPT_DIR")"
-MLO="$TOPDIR/bootloader/MLO"
-KERNEL="$TOPDIR/kernel/build/kernel.bin"
+MLO="$TOPDIR/VinixOS/bootloader/MLO"
+KERNEL="$TOPDIR/VinixOS/kernel/build/kernel.bin"
 
 echo "========================================"
 echo " Update Bootloader (MLO)"
@@ -32,7 +32,7 @@ echo "Device:       $DEVICE"
 if [ ! -f "$MLO" ]; then
     echo "Error: MLO not found at $MLO"
     echo "Please build bootloader first:"
-    echo "  cd $TOPDIR/bootloader && make"
+    echo "  cd $TOPDIR/VinixOS/bootloader && make"
     exit 1
 fi
 
@@ -40,7 +40,7 @@ fi
 if [ ! -f "$KERNEL" ]; then
     echo "Error: kernel.bin not found at $KERNEL"
     echo "Please build kernel first:"
-    echo "  cd $TOPDIR/kernel && make"
+    echo "  cd $TOPDIR/VinixOS/kernel && make"
     exit 1
 fi
 
