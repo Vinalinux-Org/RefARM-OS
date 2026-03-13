@@ -1,0 +1,10 @@
+# Phase 2 Compiler Dependencies
+
+# Testing frameworks
+hypothesis>=6.0.0      # Property-based testing
+pytest>=7.0.0          # Unit testing framework
+pytest-cov>=3.0.0      # Coverage reporting
+
+# Development tools
+black>=22.0.0          # Code formatter
+mypy>=0.950            # Type checker
