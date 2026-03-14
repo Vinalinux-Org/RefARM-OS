@@ -65,6 +65,11 @@ class Parser:
                 self.current_token.column if self.current_token else 0,
                 f"Expected {token_type.name}, got {current_type}"
             )
+            
+            # Error recovery: advance to prevent infinite loops, unless it's EOF
+            if self.current_token and self.current_token.type != TokenType.EOF:
+                self.advance()
+                
             # Return dummy token to continue parsing
             return Token(token_type, "", 
                         self.current_token.line if self.current_token else 0,
@@ -721,6 +726,10 @@ class Parser:
             f"Unexpected token in expression: {self.current_token.type.name if self.current_token else 'EOF'}"
         )
         
+        # Error recovery: advance to prevent infinite loops, unless it's EOF
+        if self.current_token and self.current_token.type != TokenType.EOF:
+            self.advance()
+            
         # Return dummy expression to continue
         return IntegerLiteral(0, 
                             self.current_token.line if self.current_token else 0,

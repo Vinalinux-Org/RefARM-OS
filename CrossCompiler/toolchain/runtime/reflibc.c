@@ -1,86 +1,101 @@
 /*
- * VinixOS Standard Library Implementation
- * Minimal C library functions for VinixOS Platform
+ * reflibc.c - VinixOS Standard C Library
+ * Basic I/O wrappers around VinixOS syscalls
  */
 
-// Forward declarations for syscalls
-int write(int fd, const char* buf, int count);
+/* Internal syscall forward declaration */
+int write(int fd, char* buf, int count);
 
-// String length function
-int strlen(const char* s) {
+/* strlen - needed internally */
+int strlen(char* s) {
     int len = 0;
-    while (*s++) {
-        len++;
-    }
+    while (*s++) len++;
     return len;
 }
 
-// Simple printf - only supports string literals (no format specifiers)
-int printf(const char* str) {
-    int len = strlen(str);
-    return write(1, str, len);  // write to stdout (fd=1)
+/* putchar - print single character */
+int putchar(int c) {
+    char ch;
+    ch = (char)c;
+    return write(1, &ch, 1);
 }
 
-// puts function - print string with newline
-int puts(const char* str) {
-    int len = strlen(str);
-    int result = write(1, str, len);
-    write(1, "\n", 1);  // add newline
-    return result;
+/* puts - print string + newline */
+int puts(char* str) {
+    int r = write(1, str, strlen(str));
+    write(1, "\n", 1);
+    return r;
 }
 
-// String compare
-int strcmp(const char* s1, const char* s2) {
-    while (*s1 && (*s1 == *s2)) {
-        s1++;
-        s2++;
+/* print_str - print string (no newline) */
+void print_str(char* str) {
+    write(1, str, strlen(str));
+}
+
+/* print_int - print signed integer */
+void print_int(int val) {
+    char buf[16];
+    char tmp[16];
+    int i;
+    int len;
+    int neg;
+
+    i = 0;
+    len = 0;
+    neg = 0;
+
+    if (val == 0) {
+        write(1, "0", 1);
+        return;
     }
-    return *(unsigned char*)s1 - *(unsigned char*)s2;
+    if (val < 0) {
+        neg = 1;
+        val = -val;
+    }
+    while (val > 0) {
+        tmp[i] = '0' + (val % 10);
+        i = i + 1;
+        val = val / 10;
+    }
+    if (neg) {
+        buf[len] = '-';
+        len = len + 1;
+    }
+    while (i > 0) {
+        i = i - 1;
+        buf[len] = tmp[i];
+        len = len + 1;
+    }
+    write(1, buf, len);
 }
 
-// String copy
-void strcpy(char* dst, const char* src) {
-    while (*src) {
-        *dst++ = *src++;
-    }
-    *dst = '\0';
-}
+/* print_hex - print integer as hex */
+void print_hex(int val) {
+    char buf[16];
+    char tmp[16];
+    char* hex;
+    int i;
+    int len;
+    int digit;
 
-// Memory copy
-void* memcpy(void* dst, const void* src, unsigned int n) {
-    unsigned char* d = (unsigned char*)dst;
-    const unsigned char* s = (const unsigned char*)src;
-    
-    while (n--) {
-        *d++ = *s++;
-    }
-    
-    return dst;
-}
+    hex = "0123456789abcdef";
+    i = 0;
+    len = 0;
 
-// Memory set
-void* memset(void* s, int c, unsigned int n) {
-    unsigned char* p = (unsigned char*)s;
-    
-    while (n--) {
-        *p++ = (unsigned char)c;
+    if (val == 0) {
+        write(1, "0", 1);
+        return;
     }
-    
-    return s;
-}
-
-// Memory compare
-int memcmp(const void* s1, const void* s2, unsigned int n) {
-    const unsigned char* p1 = (const unsigned char*)s1;
-    const unsigned char* p2 = (const unsigned char*)s2;
-    
-    while (n--) {
-        if (*p1 != *p2) {
-            return *p1 - *p2;
-        }
-        p1++;
-        p2++;
+    while (val > 0) {
+        digit = val % 16;
+        tmp[i] = hex[digit];
+        i = i + 1;
+        val = val / 16;
     }
-    
-    return 0;
+    while (i > 0) {
+        i = i - 1;
+        buf[len] = tmp[i];
+        len = len + 1;
+    }
+    write(1, buf, len);
 }
