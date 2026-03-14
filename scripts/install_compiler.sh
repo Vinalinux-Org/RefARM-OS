@@ -79,8 +79,9 @@ if [ ! -d "\$COMPILER_DIR/toolchain" ]; then
     exit 1
 fi
 
-# Run the compiler
-cd "\$COMPILER_DIR" && python3 -m toolchain.main "\$@"
+# Run the compiler without changing directory
+export PYTHONPATH="\$COMPILER_DIR:\$PYTHONPATH"
+exec python3 -m toolchain.main "\$@"
 EOF
 
 chmod +x "$INSTALL_DIR/vincc"
