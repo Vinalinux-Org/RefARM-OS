@@ -1,93 +1,278 @@
-# Self-hosted Compiler cho ARMv7-A
+# VinCC - Trình Biên Dịch C cho VinixOS
 
-Cross-compiler tự phát triển chuyển đổi mã nguồn Subset C thành binary ELF ARMv7-A có thể thực thi trên VinixOS Platform (BeagleBone Black).
+Trình biên dịch cross-compiler hoàn chỉnh, sinh binary ARMv7-A chạy trên VinixOS.
 
-## Tính Năng
+## Tổng Quan
 
-- **Ngôn ngữ nguồn**: Subset C (int, char, pointer, arrays, if/else, while, for, functions)
-- **Target**: ARMv7-A (BeagleBone Black chạy VinixOS)
-- **Implementation**: Python 3.8+
-- **Pipeline**: Lexer → Parser → Semantic Analyzer → IR Generator → Code Generator → Assembler → Linker
+VinCC là compiler viết bằng Python, thực hiện toàn bộ pipeline từ source C đến ELF binary:
+
+```
+Source (.c) → Preprocessor → Lexer → Parser → Semantic → IR → CodeGen → Assembler → Linker → ELF
+```
+
+**Đặc điểm**:
+- Pipeline hoàn chỉnh tự implement (không dùng GCC frontend)
+- Target: ARMv7-A (BeagleBone Black)
+- Tuân thủ AAPCS calling convention
+- Runtime library tích hợp (reflibc)
+- Output: ELF32 ARM binary
+
+## Ngôn Ngữ Hỗ Trợ (Subset C)
+
+**Kiểu dữ liệu**: `int`, `char`, pointer, array
+
+**Cấu trúc điều khiển**: `if/else`, `while`, `for`, `return`, `break`, `continue`
+
+**Hàm**: Định nghĩa, gọi hàm, đệ quy (tối đa 4 tham số qua r0-r3)
+
+**Toán tử**: Số học, so sánh, logic, bitwise, gán
+
+**Giới hạn**: Không hỗ trợ `const`, `unsigned`, `void` parameter, variadic, `struct/union/enum`, floating-point
 
 ## Cài Đặt
 
 ### Yêu Cầu Hệ Thống
 
-- Python 3.8 hoặc mới hơn
-- GNU ARM toolchain: `arm-linux-gnueabihf-gcc`, `arm-linux-gnueabihf-as`, `arm-linux-gnueabihf-ld`
-- (Tùy chọn) QEMU ARM emulator: `qemu-arm`
-
-### Cài Đặt Dependencies
+Ubuntu 22.04 LTS (khuyến nghị)
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+# Cài system dependencies
+sudo apt-get update
+sudo apt-get install python3 python3-pip python3-venv
+sudo apt-get install binutils-arm-linux-gnueabihf
 
-# Install ARM toolchain (Ubuntu/Debian)
-sudo apt-get install gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
+# Hoặc dùng script tự động từ root project (khuyến nghị)
+sudo bash scripts/setup-environment.sh
+```
 
-# Install QEMU (optional, for testing)
-sudo apt-get install qemu-user
+### Cài Đặt VinCC
+
+```bash
+# Từ thư mục gốc project
+bash scripts/install_compiler.sh
+```
+
+Script sẽ:
+- Copy toolchain vào `~/.local/lib/vincc`
+- Tạo wrapper `~/.local/bin/vincc`
+- Thêm vào PATH
+
+### Python Dependencies (Development/Testing)
+
+Nếu muốn chạy test suite hoặc develop compiler:
+
+```bash
+# Từ thư mục CrossCompiler/
+pip3 install -r requirements.txt
+```
+
+Bao gồm: `pytest`, `pytest-cov`, `hypothesis`, `black`, `mypy`.
+
+> **Lưu ý**: Các package này dành cho phát triển compiler, **không** cần thiết để chỉ dùng `vincc` compile chương trình.
+
+### Kiểm Tra
+
+```bash
+vincc --version
+# vincc 0.1.0
 ```
 
 ## Sử Dụng
 
-### Compile Chương Trình
+### Biên Dịch Cơ Bản
 
 ```bash
-# Compile source file to executable
-python -m toolchain.main input.c -o output.elf
+# Compile ra executable
+vincc program.c -o program
 
-# Compile to assembly only
-python -m toolchain.main input.c -S -o output.s
+# Chỉ sinh assembly
+vincc program.c -S -o program.s
 
-# Debug: dump tokens
-python -m toolchain.main input.c --dump-tokens
-
-# Debug: dump AST
-python -m toolchain.main input.c --dump-ast
-
-# Debug: dump IR
-python -m toolchain.main input.c --dump-ir
+# Compile ra object file
+vincc program.c -c -o program.o
 ```
 
-### Chạy Tests
+### Debug
 
 ```bash
-# Run all tests
+# Dump tokens
+vincc program.c --dump-tokens
+
+# Dump AST
+vincc program.c --dump-ast
+
+# Dump IR
+vincc program.c --dump-ir
+
+# Verbose output
+vincc program.c -v
+```
+
+### Tùy Chọn Nâng Cao
+
+```bash
+# Optimization level
+vincc program.c -O1 -o program
+
+# Giữ file trung gian
+vincc program.c --keep-temps -o program
+
+# Custom linker script
+vincc program.c -T custom.ld -o program
+```
+
+## Runtime Library (reflibc)
+
+### System Calls
+
+```c
+int  write(int fd, char* buf, int count);
+int  read(int fd, char* buf, int count);
+void exit(int status);
+int  yield();
+```
+
+### I/O Functions
+
+```c
+int  strlen(char* s);
+int  putchar(int c);
+int  puts(char* str);
+void print_str(char* str);
+void print_int(int val);
+void print_hex(int val);
+```
+
+## Ví Dụ
+
+### Hello World
+
+```c
+#include "reflibc.h"
+
+int main() {
+    print_str("Hello, VinixOS!\n");
+    return 0;
+}
+```
+
+Compile:
+```bash
+vincc hello.c -o hello
+```
+
+### Fibonacci
+
+```c
+#include "reflibc.h"
+
+int fib(int n) {
+    if (n <= 1) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+int main() {
+    int i;
+    for (i = 0; i < 10; i = i + 1) {
+        print_int(fib(i));
+        print_str("\n");
+    }
+    return 0;
+}
+```
+
+## Chạy Trên VinixOS
+
+### Bước 1: Compile
+
+```bash
+vincc program.c -o program
+```
+
+### Bước 2: Nhúng Vào Kernel
+
+```bash
+cp program VinixOS/kernel/src/kernel/files/
+cd VinixOS/kernel
+make
+```
+
+### Bước 3: Flash Lên SD Card
+
+```bash
+cd ../..
+bash scripts/flash_sdcard.sh /dev/sdX
+```
+
+### Bước 4: Chạy Trên Board
+
+```
+$ ls
+program  hello.txt  info.txt
+
+$ exec program
+Hello, VinixOS!
+```
+
+## Cấu Trúc Project
+
+```
+CrossCompiler/
+├── toolchain/              # Source code compiler
+│   ├── main.py             # Entry point
+│   ├── frontend/           # Lexer, Parser, Semantic
+│   ├── middleend/          # IR generation
+│   ├── backend/armv7a/     # Code generator
+│   └── runtime/            # reflibc
+├── tests/                  # Test suite
+├── docs/                   # Tài liệu kỹ thuật
+└── vincc.spec              # PyInstaller spec
+```
+
+## Testing
+
+```bash
+# Chạy test suite
 make test
 
-# Run unit tests only
-make test-unit
-
-# Run property tests only
-make test-property
-
-# Run integration tests
-make test-integration
-```
-
-## Kiến Trúc
-
-```
-toolchain/
-├── common/          # Shared utilities (error, config)
-├── frontend/        # Frontend phases
-│   ├── lexer/       # Lexical analysis
-│   ├── parser/      # Syntax analysis
-│   └── semantic/    # Semantic analysis
-├── middleend/       # IR generation
-│   └── ir/          # IR definitions
-├── backend/         # Code generation
-│   └── armv7a/      # ARMv7-A backend
-└── utils/           # Utilities
+# Test cụ thể
+python3 -m pytest tests/test_integration.py -v
 ```
 
 ## Tài Liệu
 
-- [Architecture](docs/architecture.md) - Kiến trúc tổng thể
-- [Subset C Specification](docs/subset_c_spec.md) - Ngôn ngữ Subset C
-- [IR Format](docs/ir_format.md) - Intermediate Representation
-- [Code Generation](docs/codegen_strategy.md) - Chiến lược sinh mã
-- [Usage Guide](docs/usage_guide.md) - Hướng dẫn sử dụng
+Tài liệu kỹ thuật chi tiết trong `docs/`:
 
+- `architecture.md` - Kiến trúc compiler
+- `subset_c_spec.md` - Đặc tả ngôn ngữ
+- `ir_format.md` - Format IR
+- `codegen_strategy.md` - Chiến lược sinh mã
+- `usage_guide.md` - Hướng dẫn chi tiết
+
+## Troubleshooting
+
+**Import Error**:
+```bash
+bash scripts/install_compiler.sh
+```
+
+**Assembler not found**:
+```bash
+sudo apt-get install binutils-arm-linux-gnueabihf
+```
+
+**Binary không chạy trên VinixOS**:
+- Kiểm tra: `file program` (phải là ELF32 ARM)
+- Đảm bảo `#include "reflibc.h"`
+- Compile với `-v` để xem linking
+
+## Giới Hạn
+
+- Chỉ compile single file (không hỗ trợ separate compilation)
+- Không có preprocessor macro phức tạp
+- Không có `struct/union/enum`
+- Không có floating-point
+- Không có dynamic memory (`malloc/free`)
+- Chỉ target ARMv7-A
+
+Các giới hạn này là by design để giữ compiler đơn giản và tập trung vào mục tiêu giáo dục.
