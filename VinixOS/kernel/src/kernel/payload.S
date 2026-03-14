@@ -20,29 +20,7 @@ _shell_payload_start:
 _shell_payload_end:
 
 /* ============================================================
- * RAMFS Embedded Files
+ * RAMFS Embedded Files (Auto-generated)
  * ============================================================ */
+.include "../kernel/build/ramfs_payload.S"
 
-/* hello.txt */
-.global _ramfs_hello_start
-.global _ramfs_hello_end
-.align 4
-_ramfs_hello_start:
-    .incbin "src/kernel/files/hello.txt"
-_ramfs_hello_end:
-
-/* info.txt */
-.global _ramfs_info_start
-.global _ramfs_info_end
-.align 4
-_ramfs_info_start:
-    .incbin "src/kernel/files/info.txt"
-_ramfs_info_end:
-
-/* hello_simple */
-.global _ramfs_hello_simple_start
-.global _ramfs_hello_simple_end
-.align 4
-_ramfs_hello_simple_start:
-    .incbin "src/kernel/files/hello_simple"
-_ramfs_hello_simple_end:

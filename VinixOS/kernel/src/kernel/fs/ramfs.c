@@ -10,49 +10,7 @@
 #include "uart.h"
 #include "string.h"
 #include "types.h"
-
-/* ============================================================
- * External Symbols (Defined in payload.S)
- * ============================================================ */
-
-/* hello.txt */
-extern uint8_t _ramfs_hello_start;
-extern uint8_t _ramfs_hello_end;
-
-/* info.txt */
-extern uint8_t _ramfs_info_start;
-extern uint8_t _ramfs_info_end;
-
-/* hello_simple */
-extern uint8_t _ramfs_hello_simple_start;
-extern uint8_t _ramfs_hello_simple_end;
-
-/* ============================================================
- * RAMFS File Table
- * ============================================================ */
-
-static struct ramfs_file ramfs_file_table[] = {
-    {
-        .name = "hello.txt", 
-        .data = &_ramfs_hello_start,
-        .size = 0  /* Computed at mount time */
-    },
-    {
-        .name = "info.txt",
-        .data = &_ramfs_info_start,
-        .size = 0  /* Computed at mount time */
-    },
-    {
-        .name = "hello_simple",
-        .data = &_ramfs_hello_simple_start,
-        .size = 0  /* Computed at mount time */
-    },
-    {
-        .name = NULL,  /* Sentinel */
-        .data = NULL,
-        .size = 0
-    }
-};
+#include "../../build/ramfs_generated.h"
 
 /* ============================================================
  * Helper: Minimum
@@ -74,22 +32,16 @@ int ramfs_init(void)
 {
     uart_printf("[RAMFS] Initializing embedded file table...\n");
     
-    /* Compute file sizes */
-    ramfs_file_table[0].size = (uint32_t)&_ramfs_hello_end - (uint32_t)&_ramfs_hello_start;
-    ramfs_file_table[1].size = (uint32_t)&_ramfs_info_end - (uint32_t)&_ramfs_info_start;
-    ramfs_file_table[2].size = (uint32_t)&_ramfs_hello_simple_end - (uint32_t)&_ramfs_hello_simple_start;
-    
-    /* Count files and display info */
-    int file_count = 0;
-    for (int i = 0; ramfs_file_table[i].name != NULL; i++) {
+    /* Compute file sizes from start/end pointers */
+    for (uint32_t i = 0; i < ramfs_file_count; i++) {
+        ramfs_file_table[i].size = (uint32_t)(ramfs_file_end_table[i] - ramfs_file_table[i].data);
         uart_printf("[RAMFS]   %s: %u bytes at 0x%08x\n",
                     ramfs_file_table[i].name,
                     ramfs_file_table[i].size,
                     (uint32_t)ramfs_file_table[i].data);
-        file_count++;
     }
     
-    uart_printf("[RAMFS] File table ready: %d files\n", file_count);
+    uart_printf("[RAMFS] File table ready: %u files\n", ramfs_file_count);
     return E_OK;
 }
 
@@ -117,9 +69,9 @@ struct vfs_operations *ramfs_get_operations(void)
  */
 int ramfs_lookup(const char *name)
 {
-    for (int i = 0; ramfs_file_table[i].name != NULL; i++) {
+    for (uint32_t i = 0; i < ramfs_file_count; i++) {
         if (strcmp(ramfs_file_table[i].name, name) == 0) {
-            return i;  /* Return file index */
+            return (int)i;  /* Return file index */
         }
     }
     
@@ -132,7 +84,7 @@ int ramfs_lookup(const char *name)
 int ramfs_read(int file_index, uint32_t offset, void *buf, uint32_t len)
 {
     /* Validate file index */
-    if (file_index < 0 || ramfs_file_table[file_index].name == NULL) {
+    if (file_index < 0 || (uint32_t)file_index >= ramfs_file_count) {
         return E_BADF;
     }
     
@@ -157,11 +109,7 @@ int ramfs_read(int file_index, uint32_t offset, void *buf, uint32_t len)
  */
 int ramfs_get_file_count(void)
 {
-    int count = 0;
-    for (int i = 0; ramfs_file_table[i].name != NULL; i++) {
-        count++;
-    }
-    return count;
+    return (int)ramfs_file_count;
 }
 
 /**
@@ -170,7 +118,7 @@ int ramfs_get_file_count(void)
 int ramfs_get_file_info(int index, char *name_out, uint32_t *size_out)
 {
     /* Validate index */
-    if (index < 0 || ramfs_file_table[index].name == NULL) {
+    if (index < 0 || (uint32_t)index >= ramfs_file_count) {
         return E_BADF;
     }
     

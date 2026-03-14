@@ -182,7 +182,7 @@ static int cmd_cat(int argc, char **argv)
     char buffer[256];
     int bytes_read;
 
-    printf("\n--- %s ---\n", filename);
+    printf("\n");
 
     while ((bytes_read = sys_read_file(fd, buffer, sizeof(buffer) - 1)) > 0)
     {
@@ -195,7 +195,7 @@ static int cmd_cat(int argc, char **argv)
         printf("\nError reading file: %d\n", bytes_read);
     }
 
-    printf("\n--- End of %s ---\n\n", filename);
+    printf("\n");
 
     /* Close file */
     sys_close(fd);
