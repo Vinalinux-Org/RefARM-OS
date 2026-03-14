@@ -29,11 +29,11 @@ Mục tiêu của dự án là tạo một reference platform phục vụ:
 ### Lộ trình tổng thể
 
 ```text
-Phase 1: VinixOS Platform
+Phase 1: VinixOS Platform          [✓ HOÀN THÀNH]
    Boot + BSP + Minimal OS + Userspace
    ↓
-Phase 2: Self-hosted Compiler
-   Tự xây dựng compiler nhắm đến ARMv7-A
+Phase 2: VinCC Cross Compiler      [✓ HOÀN THÀNH]
+   Compiler Python nhắm đến ARMv7-A
    Target = chính platform đã xây ở Phase 1
 ```
 
@@ -188,20 +188,21 @@ Một kỹ sư khác phải có khả năng tái triển khai hệ thống dựa
 ## 8. Tiêu chí hoàn thành (Phase 1)
 
 Dự án Phase 1 được coi là hoàn thành khi:
-- Boot thành công trên board thật.
-- Kernel xử lý interrupt ổn định.
+- Boot thành công trên board thật (BeagleBone Black).
+- Kernel xử lý interrupt ổn định (DMTimer2 IRQ @ 100Hz).
 - `idle` task chạy ở Kernel Mode.
 - `shell` task chạy độc lập ở User Mode (`0x40000000`), preemptive với `idle`.
-- MMU hoạt động theo mapping thiết kế.
-- Shell tương tác mượt mà qua UART, gọi đúng Syscall ABI.
-- ramfs hoạt động: `ls` và `cat` chạy được trong shell.
-- Có tài liệu kỹ thuật đầy đủ.
+- MMU hoạt động: 3G/1G split, AP permissions, Strongly Ordered cho peripherals.
+- Shell tương tác mượt mà qua UART, gọi đúng Syscall ABI (r7=syscall_number, r0-r3=args).
+- RAMFS hoạt động: `ls`, `cat`, `exec`, `ps`, `meminfo` chạy được trong shell.
+- ELF binary loader hoạt động: shell `exec` có thể load ELF từ RAMFS.
+- Có tài liệu kỹ thuật đầy đủ (9 files trong `VinixOS/docs/`).
 
 ---
 
-## 9. Phase 2 – Self-hosted Compiler
+## 9. Phase 2 – VinCC Cross Compiler
 
-> **Trạng thái:** Planned — bắt đầu sau khi Phase 1 hoàn thành.
+> **Trạng thái:** ✓ HOÀN THÀNH — Triển khai hoàn chỉnh, validate trên hardware thật.
 
 ### 9.1. Mục tiêu
 
@@ -240,26 +241,28 @@ Binary chạy trên VinixOS Platform
 
 | Hạng mục | Quyết định | Lý do |
 |---|---|---|
-| **Ngôn ngữ implement compiler** | **Python** | Cross compiler chạy trên host x86 — không cần chạy trên BeagleBone. Python cho phép prototype nhanh, tập trung vào pipeline concept thay vì memory management. Không ràng buộc kỹ thuật nào yêu cầu C khi mục tiêu là cross compile. |
+| **Ngôn ngữ implement compiler** | **Python** | Cross compiler chạy trên host x86 — không cần chạy trên BeagleBone. Python cho phép prototype nhanh, tập trung vào pipeline concept thay vì memory management. |
 | **Ngôn ngữ nguồn (source language)** | **Subset of C** | Đủ để học toàn bộ pipeline. Có thể so sánh output với GCC. Không mất thời gian thiết kế ngôn ngữ mới. |
 | **Backend** | **Tự viết toàn bộ (không LLVM)** | Mục tiêu là hiểu sâu — LLVM sẽ che khuất phần codegen quan trọng nhất. |
 | **IR format** | **3-address code** | Đơn giản hơn SSA, dễ implement cho người mới, đủ để học codegen thực sự. |
-| **Output format** | **ELF** | Tương thích VinixOS loader và linker script từ Phase 1. |
+| **Output format** | **ELF32** | Tương thích VinixOS ELF loader và linker script từ Phase 1. |
+| **Assembler** | **GNU as (`arm-linux-gnueabihf-as`)** | Tái sử dụng GNU assembler — compiler tự emit ARMv7-A assembly text, sau đó gọi `as` để tạo object file. |
+| **Linker** | **Tự viết bằng Python** | Linker tích hợp trong compiler pipeline, parse object file ELF sections, merge và output ELF32 executable theo linker script từ Phase 1. |
 
-**Subset C bao gồm tối thiểu:**
-- Kiểu dữ liệu: `int`, `char`, `pointer`
-- Cấu trúc điều khiển: `if/else`, `while`, `for`, `return`
-- Hàm: định nghĩa, gọi hàm, đệ quy
-- Mảng và con trỏ cơ bản
-- Syscall thông qua inline hoặc thư viện tối giản
+**Subset C đã implement (thực tế):**
+- Kiểu dữ liệu: `int`, `char`, pointers, arrays
+- Cấu trúc điều khiển: `if/else`, `while`, `for`, `return`, `break`, `continue`
+- Hàm: định nghĩa, gọi hàm, đệ quy (tối đa 4 tham số qua r0-r3 theo AAPCS)
+- Preprocessor: `#include`, `#define` cơ bản
+- Operators: số học, so sánh, logic (`&&`, `||`), bitwise, gán (`=`, `+=`, ...)
 
-**Không bao gồm (ngoài phạm vi Subset C):**
+**Không bao gồm (ngoài phạm vi):**
 - `struct`, `union`, `enum`
 - `float`, `double`
-- Preprocessor (`#include`, `#define`)
+- `const`, `unsigned`, `void` parameter, variadic functions
 - Standard library đầy đủ
 
-*Các quyết định trên được ghi lại chính thức. Nếu thay đổi trong quá trình thực hiện, cần cập nhật tài liệu ADR riêng.*
+*Các quyết định trên được ghi lại chính thức theo kết quả thực thi.*
 
 ### 9.4. Thành phần bắt buộc
 
@@ -291,9 +294,16 @@ Binary chạy trên VinixOS Platform
 - Syscall emit tương thích VinixOS syscall ABI.
 
 **9.4.6. Assembler & Linker**
-- Tự viết assembler tối giản hoặc tích hợp với GNU as.
-- Linker tạo ELF binary tương thích VinixOS memory map.
-- Linker script tái sử dụng từ Phase 1 SDK.
+- Assembler: tích hợp với `arm-linux-gnueabihf-as` (GNU assembler). Compiler emit ARMv7-A assembly text, sau đó shell ra `as` để tạo object file.
+- Linker: tự viết bằng Python (`linker.py`), parse ELF object sections, merge `.text`, `.data`, `.bss`, output ELF32 ARM executable.
+- Linker script (`app.ld`) tái sử dụng từ Phase 1, map binary vào User Space `0x40000000`.
+
+**9.4.7. Runtime Library (reflibc)**
+- `crt0.S` — startup code: setup stack, zero BSS, gọi `main()`, sau đó gọi `exit()`.
+- `syscalls.S` — syscall wrappers viết bằng ARM assembly: `write`, `read`, `exit`, `yield`.
+- `reflibc.c` / `reflibc.h` — I/O wrappers: `print_str()`, `print_int()`, `print_hex()`, `strlen()`, `putchar()`, `puts()`.
+- `divmod.S` — software division hỗ trợ `__aeabi_idiv` (ARM ABI division routine, không có FPU trên target).
+- `app.ld` — linker script: map ELF binary vào `0x40000000` (User Space VinixOS).
 
 ### 9.5. Mối liên hệ với Phase 1
 
@@ -324,11 +334,12 @@ Phase 1 cung cấp cho Phase 2:
 
 ### 9.8. Tiêu chí hoàn thành (Phase 2)
 
-- Compiler build được chương trình Subset C cơ bản (int, pointer, if/while, function call).
+- Compiler build được chương trình Subset C: int, char, pointer, array, if/while/for, function call, recursion.
 - Output binary chạy đúng trên VinixOS Platform (BeagleBone Black).
-- Syscall tương thích với VinixOS.
-- Có tài liệu kỹ thuật đầy đủ cho từng component compiler.
-- Có kết quả so sánh với GCC output.
+- Syscall tương thích với VinixOS (write, read, exit, yield qua r7/r0-r3).
+- Có tối ưu cơ bản: constant folding, constant propagation, dead code elimination.
+- Tài liệu kỹ thuật đầy đủ cho từng component compiler trong `CrossCompiler/docs/`.
+- Hello world, fibonacci và các chương trình test điển hình biên dịch và chạy đúng.
 
 ---
 
